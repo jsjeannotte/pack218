@@ -1,0 +1,5 @@
+fastapi
+nicegui
+niceguicrud
+bcrypt
+sqlmodel
