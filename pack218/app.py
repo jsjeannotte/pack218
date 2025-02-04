@@ -4,19 +4,37 @@ Please see the `OAuth2 example at FastAPI <https://fastapi.tiangolo.com/tutorial
 use the great `Authlib package <https://docs.authlib.org/en/v0.13/client/starlette.html#using-fastapi>`_ to implement a classing real authentication system.
 Here we just demonstrate the NiceGUI integration.
 """
+import logging
+import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Request
+from fastapi import Request, FastAPI
 from fastapi.responses import RedirectResponse
-from niceguicrud import NiceCRUDConfig
 from sqlalchemy.exc import NoResultFound
+from sqlmodel import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from nicegui import app, ui
+from nicegui import ui
+import nicegui
 
-from pack218.entities.camping_event import CampingEventCRUD, CampingEvent
-from pack218.entities.user import User, UserCRUD
-from pack218.db import init_db
+from pack218.config import config
+from pack218.entities import NiceCRUDWithSQL
+from pack218.entities.camping_event import CampingEvent
+from pack218.entities.family import Family
+from pack218.entities.user import User
+from pack218.pages.profile import render_profile_page
+from pack218.pages.register import render_page_register
+from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
+from pack218.pages.update_password import render_update_password_page
+from pack218.pages.utils import SessionDep, assert_is_admin
+
+from pack218.persistence import create_db_and_tables
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s')
+
+logger = logging.getLogger(__name__)
 
 # in reality users passwords would obviously need to be hashed
 # TODO: Create a signup page
@@ -27,6 +45,16 @@ from pack218.db import init_db
 unrestricted_page_routes = {'/login', '/register'}
 
 
+@asynccontextmanager
+async def lifespan(app_: FastAPI):
+    logger.info("Creating DB and Tables (if they don't exist)...")
+    create_db_and_tables()
+    logger.info("TODO: Run migrations here")
+    # run_migrations()
+    yield
+    logger.info("Shutting down...")
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """This middleware restricts access to all NiceGUI pages.
 
@@ -34,212 +62,138 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        if not app.storage.user.get('authenticated', False):
+        if not nicegui.app.storage.user.get('authenticated', False):
             if not request.url.path.startswith('/_nicegui') and request.url.path not in unrestricted_page_routes:
-                app.storage.user['referrer_path'] = request.url.path  # remember where the user wanted to go
+                nicegui.app.storage.user['referrer_path'] = request.url.path  # remember where the user wanted to go
                 return RedirectResponse('/login')
         return await call_next(request)
 
 
-app.add_middleware(AuthMiddleware)
-
-init_db()
-
-def get_current_user() -> User:
-    return User.get_by_id(app.storage.user['username'])
+app = FastAPI(lifespan=lifespan)
+nicegui.app.add_middleware(AuthMiddleware)
 
 
-@ui.page('/my-profile')
-def profile_page(first_time: Optional[bool] = False) -> None:
-    header()
+# Pages
 
-    # Check if this is the first time the user is visiting this page
-    if first_time:
-        ui.notify('Welcome to your profile page! Please fill in your information.', color='positive')
-
-    def update_profile() -> None:
-        ui.notify(f'Profile updated for username {app.storage.user.get("username")}', color='positive')
-
-        # TODO: Update the user in the database
-        current_user = get_current_user()
-        current_user.email = email.value
-        current_user.first_name = first_name.value
-        current_user.last_name = last_name.value
-
-        if update_password.value:
-            current_user.update_password(current_password.value, new_password.value, new_password_confirm.value)
-
-        # Reload the page
-        ui.navigate.to('/my-profile')
-
-    current_user = get_current_user()
-
-    # # Bind the dark_mode value to the app.storage.user object
-    # ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
-    # # And also bind it to the checkbox to control this
-    # ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
-
-    email = ui.input('Email', value=current_user.email).on('keydown.enter', update_profile)
-    first_name = ui.input('First Name', value=current_user.first_name).on('keydown.enter', update_profile)
-    last_name = ui.input('First Name', value=current_user.last_name).on('keydown.enter', update_profile)
-
-    update_password = ui.checkbox('Update password')
-    current_password = ui.input('Current Password',
-                                password=True,
-                                password_toggle_button=True).on('keydown.enter', update_profile)
-    new_password = ui.input('New Password', password=True, password_toggle_button=True).on(
-        'keydown.enter',
-        update_profile)
-    new_password_confirm = ui.input('Confirm New Password', password=True, password_toggle_button=True).on(
-        'keydown.enter',
-        update_profile)
-
-    ui.button('Update', on_click=update_profile)
-
-def header():
+def chrome(session: Session):
     def logout() -> None:
-        app.storage.user.clear()
+        nicegui.app.storage.user.clear()
         ui.navigate.to('/login')
 
     def menu() -> None:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
-            # with ui.tabs() as tabs:
-            #     ui.tab('A')
-            #     ui.tab('B')
-            #     ui.tab('My Profile')
+            ui.label("Pack 218: Let's go camping!").classes('text-l font-bold')
+            ui.space()
+            ui.button(on_click=logout, icon='logout', text='Logout').classes('flat color=white')
 
         with ui.footer(value=False) as footer:
-            ui.label('Footer')
+            ui.label('Reach out to us on email')
 
         with ui.left_drawer().classes('bg-blue-100 dark:bg-blue-400') as left_drawer:
             ui.label('My Profile')
             ui.link('Edit my profile', profile_page)
-            ui.label('Admin')
-            ui.link('Camping Events', admin_camping_event)
-            ui.link('Users', admin_users)
+            ui.link('Update my password', update_password_page)
+
+            if User.current_user_is_admin(session=session):
+                ui.label('Admin')
+                ui.link('Camping Events', admin_camping_events)
+                ui.link('Users', admin_users)
+                ui.link('Families', admin_families)
+
             ui.label('Log Out')
             ui.button(on_click=logout, icon='logout').props('outline round')
 
         with ui.page_sticky(position='bottom-right', x_offset=20, y_offset=20):
             ui.button(on_click=footer.toggle, icon='contact_support').props('fab')
 
-        # with ui.tab_panels(tabs, value='A').classes('w-full'):
-        #     with ui.tab_panel('A'):
-        #         ui.label('Content of A')
-        #     with ui.tab_panel('Admin'):
-        #         ui.label('Content of B')
-        #     with ui.tab_panel('My Profile'):
-        #         profile_page()
-
     menu()
 
 
 
-@ui.page('/admin/users')
-def admin_users() -> None:
-    header()
-    crud_config = NiceCRUDConfig(id_field="id", heading="Users", title="User")
-    ui.label('This is the admin page to manage users.')
-    UserCRUD(basemodeltype=User, basemodels=User.get_all(), config=crud_config)
-
-
-@ui.page('/admin/camping-events')
-def admin_camping_event() -> None:
-    header()
-    crud_config = NiceCRUDConfig(id_field="id", heading="Camping Events")
-    ui.label('This is the admin page for the camping events.')
-    CampingEventCRUD(basemodeltype=CampingEvent, basemodels=CampingEvent.get_all(), config=crud_config)
-
-
 @ui.page('/')
-def main_page() -> None:
+def main_page(session: SessionDep) -> None:
     def logout() -> None:
-        app.storage.user.clear()
+        nicegui.app.storage.user.clear()
         ui.navigate.to('/login')
 
-    header()
+    chrome(session=session)
 
-    # with ui.column().classes('absolute-center items-center'):
-    #     ui.label(f'Hello {app.storage.user["username"]}!').classes('text-2xl')
-    #     ui.button(on_click=logout, icon='logout').props('outline round')
-
-
-@ui.page('/subpage')
-def test_page() -> None:
-    ui.label('This is a sub page.')
-    # NOTE dark mode will be persistent for each user across tabs and server restarts
-    ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
-    ui.checkbox('dark mode').bind_value(app.storage.user, 'dark_mode')
+    with ui.column().classes('absolute-center items-center'):
+        ui.label(f'Hello {nicegui.app.storage.user["username"]}!').classes('text-2xl')
+        ui.button(on_click=logout, icon='logout').props('outline round')
 
 
 @ui.page('/login')
-def login() -> Optional[RedirectResponse]:
+def login(session: SessionDep) -> Optional[RedirectResponse]:
     def try_login() -> None:  # local function to avoid passing username and password as arguments
         try:
-            user_trying_to_login = User.get_by_id(username.value)
-        except NoResultFound as ex:
+            user_trying_to_login = User.get_by_username(username.value, session=session)
+        except NoResultFound:
             ui.notify('Wrong username or password', color='negative')
             return
-        # Todo: Handle wrong user
         if user_trying_to_login.validate_password(password.value):
-            app.storage.user.update({'username': username.value, 'authenticated': True})
-            ui.navigate.to(app.storage.user.get('referrer_path', '/'))  # go back to where the user wanted to go
+            nicegui.app.storage.user.update({'username': username.value, 'authenticated': True})
+            ui.navigate.to(nicegui.app.storage.user.get('referrer_path', '/'))  # go back to where the user wanted to go
         else:
             ui.notify('Wrong username or password', color='negative')
 
-    if app.storage.user.get('authenticated', False):
+    if nicegui.app.storage.user.get('authenticated', False):
         return RedirectResponse('/')
     with ui.card().classes('absolute-center'):
         username = ui.input('Username').on('keydown.enter', try_login)
         password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', try_login)
-        ui.button('Log in', on_click=try_login)
+        ui.button('Log in', on_click=try_login).classes(BUTTON_CLASSES_ACCEPT)
         ui.link('Click here to register', page_register)
     return None
 
 
 @ui.page('/register')
-def page_register() -> Optional[RedirectResponse]:
-    def register() -> Optional[RedirectResponse]:  # local function to avoid passing username and password as arguments
-        # TODO: Make sure that this user doesn't already exist
-        try:
-            User.get_by_id(username.value)
-            ui.notify('This username is already taken', color='negative')
-            return
-        except NoResultFound:
-            # Create the user
-            if password.value != password_confirm.value:
-                ui.notify("The passwords don't match. Please try again", color='negative')
-                return
-            elif len(password.value) < 8:
-                ui.notify("The password is too short (minimum 8 characters)", color='negative')
-                return
-            else:
-                # Create the user
-                user = User(id=username.value,
-                            first_name='', last_name='', email='',
-                            hashed_password=User.hash_password(password.value))
-                user.save()
-                # Autologin
-                app.storage.user.update({'username': username.value, 'authenticated': True})
-                # Refresh the page
-                ui.navigate.to('/my-profile?first_time=1')
-
-            #
-            # if user_trying_to_login.validate_password(password.value):
-            #     app.storage.user.update({'username': username.value, 'authenticated': True})
-            #     ui.navigate.to(app.storage.user.get('referrer_path', '/'))  # go back to where the user wanted to go
-            # else:
-            #     ui.notify('Wrong username or password', color='negative')
-    # if app.storage.user.get('authenticated', True):
-    #     return RedirectResponse('/')
-    with ui.card().classes('absolute-center'):
-        username = ui.input('Username').on('keydown.enter', register)
-        password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', register)
-        password_confirm = ui.input('Password (Confirm)', password=True, password_toggle_button=True).on('keydown.enter', register)
-        ui.button('Register', on_click=register)
-    return None
+def page_register(session: SessionDep) -> Optional[RedirectResponse]:
+    return render_page_register(session=session)
 
 
-if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(storage_secret='ASDFDSFAWEFSDFGSDFVDFFADSF')
+@ui.page('/my-profile')
+def profile_page(session: SessionDep, first_time: Optional[bool] = False) -> None:
+    chrome(session=session)
+    render_profile_page(session=session, first_time=first_time)
+
+
+@ui.page('/admin/families')
+def admin_families(session: SessionDep) -> None:
+    assert_is_admin(session=session)
+    chrome(session=session)
+    ui.label('This is the admin page to manage families.')
+    NiceCRUDWithSQL(basemodeltype=Family, basemodels=list(Family.get_all()), heading="Families")
+
+@ui.page('/admin/camping-events')
+def admin_camping_events(session: SessionDep) -> None:
+    assert_is_admin(session=session)
+    chrome(session=session)
+    ui.label('This is the admin page for the camping events.')
+    NiceCRUDWithSQL(basemodeltype=CampingEvent, basemodels=list(CampingEvent.get_all()), heading="Camping Events")
+
+@ui.page('/admin/users')
+def admin_users(session: SessionDep) -> None:
+    assert_is_admin(session=session)
+    chrome(session=session)
+    ui.label('This is the admin page to manage users.')
+    NiceCRUDWithSQL(basemodeltype=User, basemodels=list(User.get_all()), heading="Users")
+
+
+@ui.page("/update-password")
+def update_password_page(session: SessionDep) -> None:
+    render_update_password_page(session=session)
+
+
+ui.run_with(
+    app,
+    # mount_path='/',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
+    storage_secret=config.pack218_storage_key,
+    # NOTE setting a secret is optional but allows for persistent storage per user
+)
+
+# if __name__ in {"__main__", "__mp_main__"}:
+#     # ui.run(storage_secret=os.environ["PACK218_STORAGE_SECRET"])
+
+

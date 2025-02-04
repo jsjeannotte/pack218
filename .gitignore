@@ -29,3 +29,4 @@ out/
 
 database.db
 .nicegui/**
+.env

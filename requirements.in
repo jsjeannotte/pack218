@@ -3,3 +3,6 @@ nicegui
 niceguicrud
 bcrypt
 sqlmodel
+alembic
+psycopg
+pydantic-settings
