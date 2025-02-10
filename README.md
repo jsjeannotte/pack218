@@ -19,7 +19,7 @@ $ uv pip compile requirements.in -o requirements.txt
 $ uv pip compile tests/requirements.in -o tests/requirements.txt
 $ uv pip sync tests/requirements.txt
 ```
-### Environment variables (for development purposes)
+### Environment variables (for development purposes and production)
 
 ```shell
 export PACK218_STORAGE_SECRET="<your_secret_key_for_local_storage>"
@@ -27,10 +27,17 @@ export POSTGRES_USER="pack218"
 export POSTGRES_PASSWORD="<your_password_here>"
 ``` 
 
-### Starting dependencies (mostly Postgres)
+### Starting dependencies (Postgres)
 
 ```shell
-docker compose up -d 
+docker compose up -d pack218_db 
+```
+## Production
+
+```shell
+docker compose up -d
+
+# Service now listen on 0.0.0.0:8001 
 ```
 
 ## How Alembic was setup
@@ -75,3 +82,9 @@ Now we need to read this: https://stackoverflow.com/questions/68932099/how-to-ge
   - Table with icon: https://github.com/zauberzeug/nicegui/discussions/1641
   - Width (like `w-full` or `w-1/2`): https://tailwindcss.com/docs/width
 - NiceCRUD: https://github.com/Dronakurl/nicecrud
+
+## TODO
+
+- Email confirmations
+- Password reset emails
+- 

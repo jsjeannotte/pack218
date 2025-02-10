@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 from pack218.entities.family import Family
 from pack218.entities.user import User
-from pack218.entities.camping_event import CampingEvent
+from pack218.entities.event import Event
 
 target_metadata = SQLModel.metadata
 

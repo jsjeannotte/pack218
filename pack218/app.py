@@ -5,7 +5,6 @@ use the great `Authlib package <https://docs.authlib.org/en/v0.13/client/starlet
 Here we just demonstrate the NiceGUI integration.
 """
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -20,7 +19,7 @@ import nicegui
 
 from pack218.config import config
 from pack218.entities import NiceCRUDWithSQL
-from pack218.entities.camping_event import CampingEvent
+from pack218.entities.event import Event
 from pack218.entities.family import Family
 from pack218.entities.user import User
 from pack218.pages.profile import render_profile_page
@@ -36,14 +35,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(me
 
 logger = logging.getLogger(__name__)
 
-# in reality users passwords would obviously need to be hashed
-# TODO: Create a signup page
-# TODO: Create a DB with the users and their hashed passwords
-# TODO: NiceGUI: https://nicegui.io/#examples
-
-
-unrestricted_page_routes = {'/login', '/register'}
-
+unrestricted_page_routes = {'/login', '/register' , '/images/while-we-wait-for-your-email-confirmation.jpg'}
 
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
@@ -71,9 +63,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(lifespan=lifespan)
 nicegui.app.add_middleware(AuthMiddleware)
-
+nicegui.app.add_static_files('/images', 'pack218/images')
 
 # Pages
+
+@ui.page("/need-email-confirmation")
+def need_email_confirmation_page():
+    ui.image('/images/while-we-wait-for-your-email-confirmation.jpg')
+    ui.notify('Please confirm your email address first', color='negative')
+
+def assert_account_confirmed(session: Session) -> bool:
+    current_user = User.get_current(session=session)
+    if not current_user.email_confirmed:
+        ui.navigate.to('/need-email-confirmation')
+        return False
+    return True
+
 
 def chrome(session: Session):
     def logout() -> None:
@@ -83,7 +88,7 @@ def chrome(session: Session):
     def menu() -> None:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
-            ui.label("Pack 218: Let's go camping!").classes('text-l font-bold')
+            ui.label("Pack 218").classes('text-l font-bold')
             ui.space()
             ui.button(on_click=logout, icon='logout', text='Logout').classes('flat color=white')
 
@@ -92,12 +97,12 @@ def chrome(session: Session):
 
         with ui.left_drawer().classes('bg-blue-100 dark:bg-blue-400') as left_drawer:
             ui.label('My Profile')
-            ui.link('Edit my profile', profile_page)
+            ui.link('Manage my profile/family', profile_page)
             ui.link('Update my password', update_password_page)
 
             if User.current_user_is_admin(session=session):
                 ui.label('Admin')
-                ui.link('Camping Events', admin_camping_events)
+                ui.link('Events', admin_events)
                 ui.link('Users', admin_users)
                 ui.link('Families', admin_families)
 
@@ -107,7 +112,9 @@ def chrome(session: Session):
         with ui.page_sticky(position='bottom-right', x_offset=20, y_offset=20):
             ui.button(on_click=footer.toggle, icon='contact_support').props('fab')
 
-    menu()
+    is_confirmed = assert_account_confirmed(session=session)
+    if is_confirmed:
+        menu()
 
 
 
@@ -122,6 +129,29 @@ def main_page(session: SessionDep) -> None:
     with ui.column().classes('absolute-center items-center'):
         ui.label(f'Hello {nicegui.app.storage.user["username"]}!').classes('text-2xl')
         ui.button(on_click=logout, icon='logout').props('outline round')
+
+
+@ui.page('/email-confirmation/{confirmation_code}')
+def email_confirmation_page(session: SessionDep, confirmation_code: str) -> None:
+    current_user = User.get_current(session=session)
+
+    if current_user.email_confirmed:
+        ui.notify('Your email is already confirmed', color='positive')
+        ui.navigate.to('/')
+        return
+
+    else:
+        # Get the expected confirmation code from the user's storage
+        stored_confirmation_code = User.get_current().email_confirmation_code
+        if confirmation_code == stored_confirmation_code:
+            current_user.email_confirmed = True
+            current_user.save(session=session)
+            ui.notify('Email confirmed. You will be redirected to your profile in a few seconds.', color='positive')
+            ui.navigate.to('/my-profile')
+        else:
+            ui.notify('Invalid confirmation code', color='negative')
+            # TODO: Offer the user to resend the email
+            return
 
 
 @ui.page('/login')
@@ -166,12 +196,12 @@ def admin_families(session: SessionDep) -> None:
     ui.label('This is the admin page to manage families.')
     NiceCRUDWithSQL(basemodeltype=Family, basemodels=list(Family.get_all()), heading="Families")
 
-@ui.page('/admin/camping-events')
-def admin_camping_events(session: SessionDep) -> None:
+@ui.page('/admin/events')
+def admin_events(session: SessionDep) -> None:
     assert_is_admin(session=session)
     chrome(session=session)
-    ui.label('This is the admin page for the camping events.')
-    NiceCRUDWithSQL(basemodeltype=CampingEvent, basemodels=list(CampingEvent.get_all()), heading="Camping Events")
+    ui.label('This is the admin page for the events.')
+    NiceCRUDWithSQL(basemodeltype=Event, basemodels=list(Event.get_all()), heading="Events")
 
 @ui.page('/admin/users')
 def admin_users(session: SessionDep) -> None:
@@ -185,12 +215,25 @@ def admin_users(session: SessionDep) -> None:
 def update_password_page(session: SessionDep) -> None:
     render_update_password_page(session=session)
 
+# @ui.page("/test-dialog")
+# def test_dialog_page():
+#     with ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card():
+#         ui.image('/images/camping-thank-you.jpeg')
+#         ui.label('Please check your email to confirm your registration').classes('text-xl')
+#
+#
+#     while_they_wait = "/images/while-we-wait-for-your-email-confirmation.jpg"
+#     dialog.on('hide', lambda: ui.navigate.to(while_they_wait))
+#     dialog.on('escape-key', lambda: ui.navigate.to(while_they_wait))
+#     dialog.open()
 
 ui.run_with(
     app,
     # mount_path='/',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
     storage_secret=config.pack218_storage_key,
     # NOTE setting a secret is optional but allows for persistent storage per user
+    favicon="🏕️",
+    title="Pack 218",
 )
 
 # if __name__ in {"__main__", "__mp_main__"}:

@@ -1,8 +1,13 @@
 fastapi
 nicegui
-niceguicrud
+# niceguicrud
+# -e vendor/nicecrud
 bcrypt
 sqlmodel
 alembic
 psycopg
 pydantic-settings
+pydantic[email]
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

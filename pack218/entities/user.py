@@ -1,13 +1,14 @@
-from typing import List, Literal, Annotated, Optional, Type
+from typing import List, Literal, Optional, Type
 
 import bcrypt
 from nicegui import nicegui
-from pydantic import computed_field, AfterValidator
+from pydantic import computed_field, EmailStr
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session, select, Relationship
 from typing_extensions import get_args
 
 from pack218.entities import SQLModelWithSave, T
+from pack218.entities.event_registration import EventRegistration
 from pack218.persistence.engine import engine
 from sqlalchemy import String
 from sqlmodel import Field
@@ -21,16 +22,29 @@ class InvalidPasswordException(Exception):
 class InvalidNewPasswordException(Exception):
     pass
 
-
 Gender = Literal["Not provided", "Prefer not to share", "Male", "Female", "Other"]
+FamilyMemberType = Literal[
+    "",
+    "Adult Leader",
+    "Cub Scout [Lion]",
+    "Cub Scout [Tiger]",
+    "Cub Scout [Wolf]",
+    "Cub Scout [Bear]",
+    "Cub Scout [Webelos]",
+    "Cub Scout [Arrow of Light]",
+    "Parent",
+    "Guardian",
+    "Sibling",
+    "Other"]
 
+# def username_is_unique(value: str) -> str:
+#     try:
+#         User.get_by_username(value)
+#         raise ValueError(f'Username {value} is already taken')
+#     except NoResultFound:
+#         return value
+#
 
-def username_is_unique(value: str) -> str:
-    try:
-        User.get_by_username(value)
-        raise ValueError(f'Username {value} is already taken')
-    except NoResultFound:
-        return value
 
 
 class User(SQLModelWithSave, table=True):
@@ -38,32 +52,69 @@ class User(SQLModelWithSave, table=True):
         title = "User"
 
     id: int | None = Field(default=None, primary_key=True)
-    username: Annotated[str, AfterValidator(username_is_unique)] = Field(default="", title="Username", unique=True)
-
-    first_name: str = Field(default="", title="First Name")
-    last_name: str = Field(default="", title="Last Name")
-    email: str = Field(default="", title="Email")
-    phone_number: str | None = Field(default="", title="Phone Number")
-    car_license_plates: str | None = Field(default="", title="Car License Plates(s)")
+    username: str | None = Field(default=None, title="Username", description="The username is optional for family members (like cub scouts and partners) "
+                                                                             "But if they want to login, they'll need to supply one for them.")
 
     # Private fields for Admins
     hashed_password: str = Field(default="", title="Encrypted Password", exclude=True)
     is_admin: bool = Field(False, title="Is Admin")
 
-    # Couldn't get Enum to work, let's keep it simple and use Literal
-    #gender: Gender = Field(default_factory=Gender, title="Gender", sa_type=AutoString)
-    #gender: Gender = Field(default=Gender.NOT_PROVIDED, sa_column=Column(SQLModelEnum(Gender)))
+    # Profile
+    first_name: str = Field(default="", title="First Name")
+    last_name: str = Field(default="", title="Last Name")
+    family_member_type: FamilyMemberType = Field(
+        default=get_args(FamilyMemberType)[0], sa_type=String, title="Family Member Type")
     gender: Gender = Field(
         default=get_args(Gender)[0], sa_type=String, title="Gender")
+
+    # Contact
+    email: EmailStr | None = Field(default=None, title="Email")
+    phone_number: str | None = Field(default="", title="Phone Number")
+
+    # Food related
+    has_food_allergies: bool = Field(default=False, title="Has Food Allergies")
+    food_allergies_detail: str = Field(default="",
+                                       title="Food Allergies Details",
+                                       description="textarea:🚨Please list all food allergies where a risk of anaphylaxis shock exists. "
+                                                   "<br /><b>Note that you are responsible for bringing an EpiPen for "
+                                                   "cases of emergencies.</b>")
+
+    food_intolerances: str = Field(default="", title="Food Intolerances")
+
+    # Login/Registration related fields
+    can_login: bool = Field(default=False,
+                            title="Is a login user",
+                            description="This user can log into the system (if not, 'username' is optional and this is mostly a family member / cub scout)")
+
+    email_confirmed: bool = Field(default=False,
+                                  title="User has confirmed their email")
+    email_confirmation_code: str | None = Field(default=None, title="Email Confirmation Code")
+
 
     # Add a foreign key to the Family table
     family_id: int | None = Field(default=None, title="Family", foreign_key="family.id")
     family: Family | None = Relationship(back_populates="family_members", sa_relationship_kwargs={"lazy": "selectin"})
 
+    # Events
+    # events: list["Event"] = Relationship(back_populates="participants", link_model=EventRegistration)
 
-    def pre_save_check(self):
-        if not self.username:
-            raise ValueError("Username is required")
+    @property
+    def has_valid_family(self) -> bool:
+        return self.family_id is not None and self.family != 0
+
+    def pre_save(self):
+        if self.can_login:
+            if not self.username:
+                raise ValueError("Username is required for users that can login into the system.")
+            if not self.email:
+                raise ValueError("Email is required for users that can login into the system.")
+        else:
+            self.username = None
+            if not self.family_id:
+                # Let's default to getting the same family as the current user,
+                # since this is probably the most likely use case
+                self.family_id = User.get_current().family_id
+        self.model_validate(self)
 
     @computed_field
     @property

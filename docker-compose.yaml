@@ -1,5 +1,5 @@
 services:
-  db:
+  pack218_db:
     container_name: postgres
     image: postgres
     environment:
@@ -8,20 +8,32 @@ services:
       PGDATA: /data/postgres
       POSTGRES_DB: pack218
     volumes:
-      - db:/data/postgres
+      - pack218_db:/data/postgres
     ports:
-      - "5332:5432"
-    networks:
-      - db
+      - "5432:5432"
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -d postgres" ]
       interval: 30s
       timeout: 10s
       retries: 5
-networks:
-  db:
-    driver: bridge
-
+  pack218_webapp:
+    # container_name: pack218_webapp
+    build: .
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pack218
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+#    healthcheck:
+#      test: [ "CMD-SHELL", "pg_isready -d postgres" ]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 5
+#networks:
+#  db:
+#    driver: bridge
 volumes:
-  db:
+  pack218_db:

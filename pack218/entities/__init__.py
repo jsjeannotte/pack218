@@ -2,7 +2,6 @@ from typing import TypeVar, Optional, Type, Sequence
 
 from nicegui import ui
 from niceguicrud import NiceCRUD, NiceCRUDConfig
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, Session, select
 from pack218.persistence.engine import engine
@@ -23,6 +22,9 @@ class SQLModelWithSave(SQLModel):
             session.add(self)
             session.commit()
             session.refresh(self)
+
+        # Validation
+        self.pre_save()
 
         if session is None:
             with Session(engine) as session:
@@ -80,12 +82,13 @@ class NiceCRUDWithSQL(NiceCRUD):
             basemodeltype: Optional[Type[T]] = None,
             basemodels: list[T] = [],
             id_field: Optional[str] = None,
-            config: NiceCRUDConfig | dict = NiceCRUDConfig(),
+            config: NiceCRUDConfig | dict = None,
             **kwargs,  # Config parameters can be given by keyword arguments as well
     ):
-
+        config = config or NiceCRUDConfig()
         if isinstance(config, dict):
             config = NiceCRUDConfig(**config, **kwargs)
+        config.update(kwargs)
 
         # Since we have a convention of using `id` for the Primary key of all tables, we can set it as the default value
         if not id_field:
@@ -93,7 +96,7 @@ class NiceCRUDWithSQL(NiceCRUD):
 
         # Add `id` to the additional exclude list
         config.additional_exclude.append('id')
-        super().__init__(basemodeltype=basemodeltype, basemodels=basemodels, id_field=id_field, config=config, **kwargs)
+        super().__init__(basemodeltype=basemodeltype, basemodels=basemodels, id_field=id_field, config=config)
 
     async def update(self, item: Type[T]):
         item.pre_save()

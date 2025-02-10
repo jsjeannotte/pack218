@@ -30,3 +30,5 @@ out/
 database.db
 .nicegui/**
 .env
+client_secret_*
+credentials.json
