@@ -1,26 +1,153 @@
-from typing import List, Literal, Optional, Type
-
+from datetime import datetime
+from typing import Optional, Literal, Annotated, List, Type, Union
 import bcrypt
+import phonenumbers
 from nicegui import nicegui
-from pydantic import computed_field, EmailStr
 from sqlalchemy.exc import NoResultFound
-from sqlmodel import Session, select, Relationship
 from typing_extensions import get_args
 
-from pack218.entities import SQLModelWithSave, T
-from pack218.entities.event_registration import EventRegistration
-from pack218.persistence.engine import engine
-from sqlalchemy import String
-from sqlmodel import Field
+from pydantic import BeforeValidator, EmailStr, computed_field
+from pydantic_extra_types.phone_numbers import PhoneNumber
 
-from pack218.entities.family import Family
+from sqlalchemy import String
+from sqlmodel import Field, Session, select, Relationship
+
+from pack218.entities import SQLModelWithSave, T
+from pack218.persistence import engine
+
+# Use US phone numbers only
+PhoneNumber.default_region_code = 'US'
+
+
+
+class EventRegistration(SQLModelWithSave, table=True, title="Event Registration"):
+
+    id: int | None = Field(default=None, primary_key=True)
+
+    # Add a foreign key to the User table
+    user_id: int = Field(title="User", foreign_key="user.id")
+
+    # Add a foreign key to the Event table
+    event_id: int = Field(title="Event", foreign_key="event.id")
+
+    # Default to now when creating a new EventRegistration
+    registration_ts: datetime = Field(default_factory=datetime.now, title="Registration Date")
+
+    stay_friday_night: bool = Field(default=False, title="Will sleepover on Friday Night")
+    stay_saturday_night: bool = Field(default=False, title="Will sleepover on Saturday Night")
+
+    eat_saturday_breakfast: bool = Field(default=False, title="Will enjoy Saturday's breakfast")
+    eat_saturday_lunch: bool = Field(default=False, title="Will enjoy Saturday's lunch")
+    eat_saturday_dinner: bool = Field(default=False, title="Will enjoy Saturday's dinner")
+    eat_sunday_breakfast: bool = Field(default=False, title="Will enjoy Sunday's breakfast")
+
+
+    @property
+    def user(self) -> 'User':
+        return User.get_by_id(id=self.user_id, session=self.session)
+
+    @staticmethod
+    def select_by_event(session: Session, event_id: int) -> List['EventRegistration']:
+        statement = select(EventRegistration).where(
+            EventRegistration.event_id == event_id)
+        results = session.exec(statement)
+        return list(results.all())
+
+    @staticmethod
+    def get_by_user_and_event(session: Session, user_id: int, event_id: int) -> Optional['EventRegistration']:
+        statement = select(EventRegistration).where(EventRegistration.user_id == user_id).where(EventRegistration.event_id == event_id)
+        results = session.exec(statement)
+        return results.one_or_none()
+
+    @staticmethod
+    def get_or_create_by_user_and_event(session: Session, user_id: int, event_id: int) -> 'EventRegistration':
+        event_registration = EventRegistration.get_by_user_and_event(session=session, user_id=user_id, event_id=event_id)
+        if event_registration is None:
+            event_registration = EventRegistration(user_id=user_id, event_id=event_id)
+            event_registration.save()
+        return event_registration
+
+
+EventType = Literal["Camping", "Other"]
+
+
+def is_date(value: str) -> str:
+    # See if this is a valid date of format YYYY-MM-DD
+    try:
+        datetime.strptime(value, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError(f'{value} is not a valid date (Expecting format YYYY-MM-DD)')
+    return value
+
+
+Date = Annotated[str, BeforeValidator(lambda v: v + 1)]
+
+
+class Event(SQLModelWithSave, table=True, title="Event"):
+    id: int | None = Field(default=None, primary_key=True)
+    event_type: EventType | None = Field(default=None, sa_type=String, title="Event Type")
+    date: Date = Field(title="Date")
+    location: str = Field(default="", title="Location")
+    details: str = Field(default="", title="Details", description="textarea:Details about the event")
+    duration_in_days: int = Field(default=2, title="Duration", description="Duration of the event (in days)")
+
+    # TODO: Fix the issue with relationship so we can improve performance
+    #  and remove our custom implementation: get_participants
+    # participants: list[User] = Relationship(back_populates="events", link_model=EventRegistration)
+
+    def get_participants(self, session: Session) -> List['User']:
+        # TODO: Rewrite into a single query with joins
+
+        # Using SQLModel, perform a select of all users in the user table that are registered for this event through the EventRegistration table
+        statement = select(User).join(EventRegistration).where(EventRegistration.event_id == self.id)
+        results = session.exec(statement)
+        return list(results.all())
+        # return [er.user for er in EventRegistration.select_by_event(session=session, event_id=self.id)]
+
+    @property
+    def date_as_datetime(self) -> datetime:
+        return datetime.strptime(self.date, '%Y-%m-%d')
+
+    @property
+    def is_upcoming(self) -> bool:
+        return self.date_as_datetime > datetime.now()
+
+    @staticmethod
+    def get_upcoming(session: Session) -> List['Event']:
+        return [e for e in Event.get_all(session=session) if e.is_upcoming]
+
+    @staticmethod
+    def get_past(session: Session) -> List['Event']:
+        return [e for e in Event.get_all(session=session) if not e.is_upcoming]
+
+
+class Family(SQLModelWithSave, table=True):
+    class Config:
+        title = "Family"
+
+    id: int | None = Field(default=None, primary_key=True)
+    family_name: str = Field(default="", title="Family Name")
+    emergency_contact_first_name_1: str = Field(default="", title="Emergency Contact First Name")
+    emergency_contact_last_name_1: str = Field(default="", title="Emergency Contact Last Name")
+    emergency_contact_phone_number_1: str = Field(default="", title="Emergency Contact Phone Number")
+    emergency_contact_first_name_2: str = Field(default="", title="Secondary Emergency Contact First Name")
+    emergency_contact_last_name_2: str = Field(default="", title="Secondary Emergency Contact Last Name")
+    emergency_contact_phone_number_2: str = Field(default="", title="Secondary Emergency Contact Phone Number")
+
+    car_license_plates: str | None = Field(default="", title="Car License Plates(s)")
+
+
+    family_members: list["User"] = Relationship(back_populates="family", sa_relationship_kwargs={"lazy": "selectin"})
+    # family_manager_user_id: str | None = Field(default=None, title="Family Manager User ID", foreign_key="user.id")
 
 
 class InvalidPasswordException(Exception):
     pass
 
+
 class InvalidNewPasswordException(Exception):
     pass
+
 
 Gender = Literal["Not provided", "Prefer not to share", "Male", "Female", "Other"]
 FamilyMemberType = Literal[
@@ -37,15 +164,6 @@ FamilyMemberType = Literal[
     "Sibling",
     "Other"]
 
-# def username_is_unique(value: str) -> str:
-#     try:
-#         User.get_by_username(value)
-#         raise ValueError(f'Username {value} is already taken')
-#     except NoResultFound:
-#         return value
-#
-
-
 
 class User(SQLModelWithSave, table=True):
     class Config:
@@ -60,8 +178,8 @@ class User(SQLModelWithSave, table=True):
     is_admin: bool = Field(False, title="Is Admin")
 
     # Profile
-    first_name: str = Field(default="", title="First Name")
-    last_name: str = Field(default="", title="Last Name")
+    first_name: str = Field(title="First Name")
+    last_name: str = Field(title="Last Name")
     family_member_type: FamilyMemberType = Field(
         default=get_args(FamilyMemberType)[0], sa_type=String, title="Family Member Type")
     gender: Gender = Field(
@@ -69,7 +187,7 @@ class User(SQLModelWithSave, table=True):
 
     # Contact
     email: EmailStr | None = Field(default=None, title="Email")
-    phone_number: str | None = Field(default="", title="Phone Number")
+    phone_number: PhoneNumber | None = Field(default=None, title="Phone Number")
 
     # Food related
     has_food_allergies: bool = Field(default=False, title="Has Food Allergies")

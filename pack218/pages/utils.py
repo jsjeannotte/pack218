@@ -6,7 +6,7 @@ import nicegui
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session
 
-from pack218.entities.user import User
+from pack218.entities.models import User
 from pack218.persistence import get_session
 
 

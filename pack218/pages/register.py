@@ -1,6 +1,7 @@
 import logging
 import re
 import uuid
+from functools import partial
 from typing import Optional
 
 from nicegui import ui
@@ -11,11 +12,12 @@ from starlette.responses import RedirectResponse
 
 from pack218.config import config
 from pack218.email import send_message
-from pack218.entities.user import User
-from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
+from pack218.entities.models import User
+from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT, simple_dialog
 from pack218.pages.utils import validate_new_password
 
 logger = logging.getLogger(__name__)
+
 
 def render_page_register(session: Session):
 
@@ -32,8 +34,12 @@ def render_page_register(session: Session):
                 confirmation_code = uuid.uuid4().hex
 
                 # Create the user
-                user = User(username=username.value,
+                user = User(first_name=first_name.value,
+                            last_name=last_name.value,
+                            phone_number=phone_number.value,
+                            username=username.value,
                             email=email.value,
+                            family_member_type='Parent',
                             hashed_password=User.hash_password(password.value),
                             can_login=True,
                             email_confirmation_code=confirmation_code)
@@ -55,7 +61,7 @@ def render_page_register(session: Session):
                     nicegui.app.storage.user.update({'username': username.value, 'user_id': user.id, 'authenticated': True})
 
                     # Show a message to tell the user to check their email and look for a message with the subject we just sent
-                    with ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card():
+                    with simple_dialog() as dialog, ui.card():
                         ui.image('/images/camping-thank-you.jpeg')
                         ui.label('Please check your email to confirm your registration').classes('text-xl')
 
@@ -71,11 +77,32 @@ def render_page_register(session: Session):
         #         return 'Need to provide a valid email'
         #     return None
 
-        username = ui.input('Username').on('keydown.enter', register)
-        email = ui.input('Email Address',
-                         # validation=check_email
-                         ).on('keydown.enter', register)
-        password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', register)
-        password_confirm = ui.input('Password (Confirm)', password=True, password_toggle_button=True).on(
-            'keydown.enter', register)
-        ui.button('Register', on_click=register).classes(BUTTON_CLASSES_ACCEPT)
+        def validate_str_has_value(value: str, field_name: str):
+            if not value or len(value) == 0:
+                return f'Need to provide a {field_name}'
+            return None
+
+        validate_first_name = partial(validate_str_has_value, field_name='first name')
+        validate_last_name = partial(validate_str_has_value, field_name='last name')
+
+
+        with ui.row():
+            first_name = ui.input('First Name',
+                                  validation=validate_first_name,
+                                  ).on('keydown.enter', register).on('blur', lambda: first_name.validate())
+            last_name = ui.input('Last Name',
+                                 validation=validate_last_name
+                                 ).on('keydown.enter', register).on('blur', lambda: last_name.validate())
+        with ui.row():
+            phone_number = ui.input('Phone Number',
+                                    validation={'Need to provide a valid phone number': lambda value: len(value) > 0}).on('keydown.enter', register)
+            email = ui.input('Email Address',
+                             ).on('keydown.enter', register)
+        with ui.row():
+            username = ui.input('Username').on('keydown.enter', register)
+        with ui.row():
+            password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', register)
+            password_confirm = ui.input('Password (Confirm)', password=True, password_toggle_button=True).on(
+                'keydown.enter', register)
+        with ui.card_section():
+            ui.button('Register', on_click=register).classes(BUTTON_CLASSES_ACCEPT)

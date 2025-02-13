@@ -1,7 +1,7 @@
 from nicegui import ui
 from sqlmodel import Session
 
-from pack218.entities.user import InvalidPasswordException, InvalidNewPasswordException, User
+from pack218.entities.models import InvalidPasswordException, InvalidNewPasswordException, User
 from pack218.pages.ui_components import card_title, BUTTON_CLASSES_CANCEL, BUTTON_CLASSES_ACCEPT
 from pack218.pages.utils import validate_new_password
 

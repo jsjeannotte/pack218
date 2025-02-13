@@ -5,9 +5,8 @@ import nicegui
 
 from niceguicrud import NiceCRUDConfig
 from pack218.entities import NiceCRUDWithSQL
-from pack218.entities.family import Family
-from pack218.entities.user import Gender, User
-from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT
+from pack218.entities.models import Family, Gender, User
+from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog
 from pack218.pages.utils import SessionDep
 
 
@@ -21,6 +20,7 @@ from pack218.pages.utils import SessionDep
 #     else:
 #         ui.label("You are not part of a family").classes('text-lg font-bold text-red-500')
 
+@ui.refreshable
 def render_profile_page(session: SessionDep):
 
     current_user = User.get_current(session=session)
@@ -47,15 +47,14 @@ def render_profile_page(session: SessionDep):
                 new_family.save(session=session)
                 current_user.family_id = new_family.id
                 current_user.save(session=session)
-                dialog.close()
+                render_profile_page.refresh()
             else:
-                ui.notify(f'Family updated for username {nicegui.app.storage.user.get("username")}', color='positive')
                 current_user.family_id = family_id.value
                 current_user.save(session=session)
-                dialog.close()
+                render_profile_page.refresh()
 
         # Show a dialog with a drop down to select a family, or a button to create a new family
-        with ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card():
+        with simple_dialog() as dialog, ui.card():
             with card():
                 card_title("Select your family or register a new one")
                 with ui.card_section():
@@ -72,8 +71,8 @@ def render_profile_page(session: SessionDep):
 
                 with ui.card_section().bind_visibility_from(family_id, "value", value="NEW_FAMILY"):
                     with ui.row():
-                        family_name_input = ui.input('Last Name',
-                                 validation={'Need to provide a valid last name': lambda value: len(value) > 0}
+                        family_name_input = ui.input('Family Name',
+                                 validation={'Need to provide a valid family name': lambda value: len(value) > 0}
                                  )
             with ui.row():
                 ui.button('Close', on_click=dialog.close)

@@ -8,6 +8,8 @@ alembic
 psycopg
 pydantic-settings
 pydantic[email]
+pydantic_extra_types
+phonenumbers
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib

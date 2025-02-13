@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel
 
@@ -5,10 +7,12 @@ from pack218.config import config
 
 # SQL_ALCHEMY_DATABASE_URL = "sqlite:///database.db"
 db_host = "localhost" if config.run_in_editor else "pack218_db"
-SQL_ALCHEMY_DATABASE_URL = f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{db_host}:5432/pack218"
 
+def get_sql_alchemy_database_url():
+    host = os.getenv("OVERRIDE_DB_HOST") or db_host
+    return f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{host}:5432/pack218"
 
-engine = create_engine(SQL_ALCHEMY_DATABASE_URL)
+engine = create_engine(get_sql_alchemy_database_url())
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",

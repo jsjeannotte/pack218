@@ -17,9 +17,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from pack218.entities.family import Family
-from pack218.entities.user import User
-from pack218.entities.event import Event
+from pack218.entities.models import Event, Family, User
 
 target_metadata = SQLModel.metadata
 
@@ -69,9 +67,10 @@ def run_migrations_online() -> None:
     # )
 
     from sqlalchemy import create_engine
-    from pack218.persistence.engine import SQL_ALCHEMY_DATABASE_URL
-    logging.info(f"Connecting using {SQL_ALCHEMY_DATABASE_URL}")
-    connectable = create_engine(SQL_ALCHEMY_DATABASE_URL)
+    from pack218.persistence.engine import get_sql_alchemy_database_url
+    connection_str = get_sql_alchemy_database_url()
+    logging.warning(f"Connecting using {connection_str}")
+    connectable = create_engine(connection_str)
 
     with connectable.connect() as connection:
         context.configure(

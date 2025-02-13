@@ -115,7 +115,6 @@ class NiceCRUDWithSQL(NiceCRUD):
                 origin = str(e)
             ui.notify(f"Integrity error: {origin}", color='negative')
             return
-            # raise ValueError(f'Integrity error: {str(e)}')
         await super().create(item)
 
     async def delete(self, id: int):

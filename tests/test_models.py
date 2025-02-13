@@ -3,7 +3,7 @@ Example test.
 """
 import pytest
 
-from pack218.entities.user import User, InvalidPasswordException, InvalidNewPasswordException
+from pack218.entities.models import InvalidPasswordException, InvalidNewPasswordException, User
 
 
 @pytest.fixture

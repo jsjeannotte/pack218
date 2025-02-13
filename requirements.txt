@@ -115,6 +115,8 @@ oauthlib==3.2.2
     # via requests-oauthlib
 orjson==3.10.15
     # via nicegui
+phonenumbers==8.13.54
+    # via -r requirements.in
 propcache==0.2.1
     # via
     #   aiohttp
@@ -140,10 +142,13 @@ pydantic==2.10.6
     # via
     #   -r requirements.in
     #   fastapi
+    #   pydantic-extra-types
     #   pydantic-settings
     #   sqlmodel
 pydantic-core==2.27.2
     # via pydantic
+pydantic-extra-types==2.10.2
+    # via -r requirements.in
 pydantic-settings==2.7.1
     # via -r requirements.in
 pygments==2.19.1
@@ -190,6 +195,7 @@ typing-extensions==4.12.2
     #   nicegui
     #   pydantic
     #   pydantic-core
+    #   pydantic-extra-types
     #   sqlalchemy
 uritemplate==4.1.1
     # via google-api-python-client

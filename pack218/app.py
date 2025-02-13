@@ -6,6 +6,7 @@ Here we just demonstrate the NiceGUI integration.
 """
 import logging
 from contextlib import asynccontextmanager
+from operator import index
 from typing import Optional
 
 from fastapi import Request, FastAPI
@@ -19,9 +20,9 @@ import nicegui
 
 from pack218.config import config
 from pack218.entities import NiceCRUDWithSQL
-from pack218.entities.event import Event
-from pack218.entities.family import Family
-from pack218.entities.user import User
+from pack218.entities.models import Event, Family, User
+from pack218.pages.event_registration import render_page_event_registration
+from pack218.pages.home_page import render_home_page
 from pack218.pages.profile import render_profile_page
 from pack218.pages.register import render_page_register
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
@@ -88,14 +89,18 @@ def chrome(session: Session):
     def menu() -> None:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
-            ui.label("Pack 218").classes('text-l font-bold')
+            ui.label("Pack 218 Camping").classes('text-l font-bold')
             ui.space()
+            ui.label(f'Hello {nicegui.app.storage.user["username"]}!').tailwind.margin('mr-4')
             ui.button(on_click=logout, icon='logout', text='Logout').classes('flat color=white')
 
         with ui.footer(value=False) as footer:
             ui.label('Reach out to us on email')
 
         with ui.left_drawer().classes('bg-blue-100 dark:bg-blue-400') as left_drawer:
+            ui.label('Home')
+            ui.link('Camping Trips', main_page)
+
             ui.label('My Profile')
             ui.link('Manage my profile/family', profile_page)
             ui.link('Update my password', update_password_page)
@@ -125,11 +130,7 @@ def main_page(session: SessionDep) -> None:
         ui.navigate.to('/login')
 
     chrome(session=session)
-
-    with ui.column().classes('absolute-center items-center'):
-        ui.label(f'Hello {nicegui.app.storage.user["username"]}!').classes('text-2xl')
-        ui.button(on_click=logout, icon='logout').props('outline round')
-
+    render_home_page(session=session)
 
 @ui.page('/email-confirmation/{confirmation_code}')
 def email_confirmation_page(session: SessionDep, confirmation_code: str) -> None:
@@ -184,9 +185,14 @@ def page_register(session: SessionDep) -> Optional[RedirectResponse]:
 
 
 @ui.page('/my-profile')
-def profile_page(session: SessionDep, first_time: Optional[bool] = False) -> None:
+def profile_page(session: SessionDep) -> None:
     chrome(session=session)
-    render_profile_page(session=session, first_time=first_time)
+    render_profile_page(session=session)
+
+@ui.page('/event-registration/{event_id}')
+def event_registration_page(session: SessionDep, event_id: int) -> None:
+    chrome(session=session)
+    render_page_event_registration(session=session, event_id=event_id)
 
 
 @ui.page('/admin/families')

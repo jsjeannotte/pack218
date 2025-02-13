@@ -40,7 +40,9 @@ docker compose up -d
 # Service now listen on 0.0.0.0:8001 
 ```
 
-## How Alembic was setup
+## Alembic (schema evolution)
+
+### How to setup Alembic (mostly for my own reference)
 
 ```shell
 alembic init alembic
@@ -48,13 +50,13 @@ alembic init alembic
 
 Then I edited the configs in `alembic.ini` and `alembic/env.py`.
 
-Now to add a field:
+### Example: Now to add a field
 
 1) Add the field to the model (make sure it's non-NULL)
 
 Example:
 ```python
-phone_number: str | None = Field(default="", title="Phone Number")
+phone_number: PhoneNumber | None = Field(default="", title="Phone Number")
 ```
 
 2) Run Alembic to generate the migration script:
@@ -66,9 +68,14 @@ alembic revision --autogenerate -m "Add users.phone_number"
 3) Run the migration:
 
 ```shell
-alembic upgrade head 
+OVERRIDE_DB_HOST=localhost alembic upgrade head
 ```
-Now we need to read this: https://stackoverflow.com/questions/68932099/how-to-get-alembic-to-recognise-sqlmodel-database-model
+
+## First deployment
+
+1) Checkout the code on the server
+2) Run `docker compose -d up`
+3) Run `alembic upgrade head` from within the web app container
 
 ## References
 
