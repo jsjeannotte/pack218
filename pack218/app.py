@@ -62,7 +62,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(lifespan=lifespan)
 nicegui.app.add_middleware(AuthMiddleware)
-nicegui.app.add_static_files('/images', 'pack218/images')
+# nicegui.app.add_static_files('/images', 'pack218/images')
 
 # Pages
 
