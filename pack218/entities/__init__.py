@@ -1,7 +1,7 @@
 from typing import TypeVar, Optional, Type, Sequence
 
 from nicegui import ui
-from pack218.nicecrud.niceguicrud import NiceCRUD, NiceCRUDConfig
+from pack218.nicecrud import NiceCRUD, NiceCRUDConfig
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, Session, select
 from pack218.persistence.engine import engine
