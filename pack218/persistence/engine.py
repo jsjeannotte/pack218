@@ -2,15 +2,18 @@ import os
 
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel
+import logging
 
 from pack218.config import config
 
-# SQL_ALCHEMY_DATABASE_URL = "sqlite:///database.db"
-db_host = "localhost" if config.run_in_editor else "pack218_db"
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s')
+logger = logging.getLogger(__name__)
 
 def get_sql_alchemy_database_url():
-    host = os.getenv("OVERRIDE_DB_HOST") or db_host
-    return f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{host}:5432/pack218"
+    connection_str = f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{config.postgres_host}:{config.postgres_port}/pack218"
+    logger.info(f"Connecting to {connection_str}")
+    return connection_str
 
 engine = create_engine(get_sql_alchemy_database_url())
 

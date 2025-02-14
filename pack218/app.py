@@ -42,8 +42,6 @@ unrestricted_page_routes = {'/login', '/register' , '/images/while-we-wait-for-y
 async def lifespan(app_: FastAPI):
     logger.info("Creating DB and Tables (if they don't exist)...")
     create_db_and_tables()
-    logger.info("TODO: Run migrations here")
-    # run_migrations()
     yield
     logger.info("Shutting down...")
 

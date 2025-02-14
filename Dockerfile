@@ -26,4 +26,6 @@ RUN uv python install 3.11
 COPY . /app
 RUN uv venv --python 3.11 /venv
 RUN VIRTUAL_ENV=/venv uv pip install -r /app/requirements.txt
-CMD cd /app && /venv/bin/python3 -m uvicorn pack218.app:app --host 0.0.0.0 --port 8001 --workers 1
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+WORKDIR /app
+CMD /venv/bin/python3 -m uvicorn pack218.app:app --env-file /app/.env --host 0.0.0.0 --port 8001 --workers 1

@@ -68,7 +68,7 @@ alembic revision --autogenerate -m "Add users.phone_number"
 3) Run the migration:
 
 ```shell
-OVERRIDE_DB_HOST=localhost alembic upgrade head
+alembic upgrade head
 ```
 
 ## First deployment
