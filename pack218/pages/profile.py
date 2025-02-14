@@ -3,7 +3,7 @@ from typing import get_args
 from nicegui import ui
 import nicegui
 
-from pack218.nicecrud import NiceCRUDConfig
+from pack218.niceguicrud import NiceCRUDConfig
 from pack218.entities import NiceCRUDWithSQL
 from pack218.entities.models import Family, Gender, User
 from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog
