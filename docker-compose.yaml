@@ -23,10 +23,13 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: pack218
+      POSTGRES_DB: "pack218"
+      PACK218_APP_URL: "http://0.0.0.0:8001"
     ports:
       - "8001:8001"
     restart: unless-stopped
+    # To debug the env
+    # command: sleep infinity
 #    healthcheck:
 #      test: [ "CMD-SHELL", "pg_isready -d postgres" ]
 #      interval: 30s
