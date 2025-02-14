@@ -1,12 +1,7 @@
-from typing import Optional, get_args
-
 from nicegui import ui
-import nicegui
 
-from niceguicrud import NiceCRUDConfig
-from pack218.entities import NiceCRUDWithSQL
-from pack218.entities.models import EventRegistration, Event, Family, Gender, User
-from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT
+from pack218.entities.models import EventRegistration, Event, User
+from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
 from pack218.pages.utils import SessionDep
 
 

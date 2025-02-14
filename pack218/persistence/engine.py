@@ -11,10 +11,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(me
 logger = logging.getLogger(__name__)
 
 def get_sql_alchemy_database_url():
-    return "sqlite:///database.db"
-    #connection_str = f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{config.postgres_host}:{config.postgres_port}/pack218"
-    #logger.info(f"Connecting to {connection_str}")
-    # return connection_str
+    if config.pack218_use_sqlite:
+        return "sqlite:///database.db"
+    else:
+        connection_str = f"postgresql+psycopg://{config.postgres_user}:{config.postgres_password}@{config.postgres_host}:{config.postgres_port}/pack218"
+        logger.info(f"Connecting to {connection_str}")
+        return connection_str
 
 engine = create_engine(get_sql_alchemy_database_url())
 

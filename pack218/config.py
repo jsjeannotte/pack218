@@ -9,6 +9,7 @@ class Configs(BaseSettings):
     postgres_user: str
     postgres_password: str
     pack218_app_url: str
+    pack218_use_sqlite: bool
 
 
     run_in_editor: bool = False
