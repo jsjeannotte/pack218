@@ -1,14 +1,112 @@
-from typing import get_args
+import logging
+from enum import Enum
+from functools import partial
+from typing import get_args, Optional
 
 from nicegui import ui
 import nicegui
+from sqlmodel import Session
 
-from pack218.niceguicrud import NiceCRUDConfig
-from pack218.entities import NiceCRUDWithSQL
-from pack218.entities.models import Family, Gender, User
-from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog
+from pack218.entities.models import Family, Gender, User, FamilyMemberType
+from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog, \
+    BUTTON_CLASSES_CANCEL
 from pack218.pages.utils import SessionDep
 
+logger = logging.getLogger(__name__)
+
+class CRUDMode(Enum):
+    """CRUD mode for the user form"""
+    CREATE = 'create'
+    UPDATE = 'update'
+
+
+
+def dialog_user_crud(session: Session, crud_mode:CRUDMode, user: Optional[User] = None, contact_info_required: bool = False):
+    """
+    Show a dialog to create or update a user.
+    """
+
+    if user is None:
+        if crud_mode == CRUDMode.UPDATE:
+            raise ValueError("User must be provided in UPDATE mode")
+        # Create a new user
+        user = User()
+
+    def apply_changes():
+        if not user.family_id:
+            user.family_id = User.get_current(session=session).family_id
+        user.first_name = first_name.value
+        user.last_name = last_name.value
+        if contact_info_required:
+            default_contact_value = ""
+        else:
+            default_contact_value = None
+        user.email = email.value or default_contact_value
+        user.phone_number = phone_number.value or default_contact_value
+
+        user.family_member_type = family_member_type.value
+
+        user.gender = gender.value or None
+
+        user.has_food_allergies = has_food_allergies.value
+        user.food_allergies_detail = food_allergies_detail.value
+        user.has_food_intolerances = has_food_intolerances.value
+        user.food_intolerances = food_intolerances.value
+
+        try:
+            user.save(session=session)
+            dialog.close()
+            render_profile_page.refresh()
+        except Exception as e:
+            logger.exception(e)
+            ui.notify(f'Error: {e}', color='negative')
+
+
+
+    with simple_dialog() as dialog, ui.card():
+        with ui.card_section():
+            with ui.row():
+                first_name = ui.input('First Name',
+                         validation={'Need to provide a valid first name': lambda value: len(value) > 0}
+                         )
+                last_name = ui.input('Last Name',
+                         validation={'Need to provide a valid last name': lambda value: len(value) > 0}
+                         )
+            with ui.row():
+                family_member_type = ui.select(list(get_args(FamilyMemberType)), label='Family Member Type').classes('w-full')
+            with ui.row():
+                contact_info_suffix = " " if contact_info_required else " (optional)"
+                email = ui.input(f'📧 Email{contact_info_suffix}')
+                phone_number = ui.input(f'☎️ Phone number{contact_info_suffix}')
+            with ui.row():
+                gender = ui.select(list(get_args(Gender)), label='Gender').classes('w-full')
+            with ui.row():
+                has_food_allergies = ui.checkbox('Has food allergies?').classes('w-full')
+                food_allergies_detail = ui.textarea('Allergies Detail 💬').classes('w-full').bind_visibility_from(has_food_allergies, "value")
+                with ui.tooltip().classes("text-base"):
+                    ui.html(User.model_fields["food_allergies_detail"].description).classes('text-sm')
+            with ui.row():
+                has_food_intolerances = ui.checkbox('Has food intolerances?').classes('w-full')
+                food_intolerances = ui.textarea('Food Intolerances Detail').classes('w-full').bind_visibility_from(has_food_intolerances, "value")
+
+        with ui.row():
+            ui.button('Cancel').on_click(dialog.close).classes(BUTTON_CLASSES_CANCEL)
+            if crud_mode == CRUDMode.UPDATE:
+                first_name.bind_value(user, 'first_name')
+                last_name.bind_value(user, 'last_name')
+                email.bind_value(user, 'email')
+                phone_number.bind_value(user, 'phone_number')
+                gender.bind_value(user, "gender")
+                family_member_type.bind_value(user, "family_member_type")
+                has_food_allergies.bind_value(user, "has_food_allergies")
+                food_allergies_detail.bind_value(user, "food_allergies_detail")
+                has_food_intolerances.bind_value(user, "has_food_intolerances")
+                food_intolerances.bind_value(user, "food_intolerances")
+                ui.button('Update user information').on_click(apply_changes).classes(BUTTON_CLASSES_ACCEPT)
+            else:
+                ui.button('Create family member').on_click(apply_changes).classes(BUTTON_CLASSES_ACCEPT)
+
+    dialog.open()
 
 # def family_info_label(user: User):
 #     if user.family:
@@ -19,6 +117,41 @@ from pack218.pages.utils import SessionDep
 #             ui.label(f'🚑 Secondary Emergency Contact: {user.family.emergency_contact_first_name_2} {user.family.emergency_contact_last_name_2} {user.family.emergency_contact_phone_number_2}').classes('text-lg')
 #     else:
 #         ui.label("You are not part of a family").classes('text-lg font-bold text-red-500')
+
+def user_card(user: User):
+    # Add padding
+    with ui.card():
+        with ui.row():
+            ui.label(f"{user.first_name} {user.last_name} ({user.family_member_type})").classes('text-lg font-bold')
+        if user.email or user.phone_number:
+            with ui.row():
+                if user.email:
+                    ui.label(f"📧 {user.email}")
+                if user.phone_number:
+                    ui.label(f"☎️ {user.phone_number}")
+        if user.has_food_allergies:
+            with ui.row():
+                ui.label(f"🚨Allergies:  {user.food_allergies_detail}").classes('text-lg').tailwind.text_color("red-500")
+                with ui.tooltip().classes("text-base"):
+                    ui.html(User.model_fields["food_allergies_detail"].description).classes('text-sm')
+        if user.has_food_intolerances:
+            with ui.row():
+                ui.label(f"🍽️ Intolerances: {user.food_intolerances}").classes('text-lg')
+        with ui.row():
+            ui.button('Update', on_click=partial(dialog_user_crud, session=None, crud_mode=CRUDMode.UPDATE, user=user)).classes(BUTTON_CLASSES_ACCEPT)
+
+@ui.refreshable
+def family_members(session: SessionDep):
+    current_user = User.get_current(session=session)
+    with card().bind_visibility_from(current_user, "has_valid_family"):
+        card_title("My Family Members (grown ups and cub scouts)")
+        ui.button('Create/Add New', on_click=partial(dialog_user_crud, session=session, crud_mode=CRUDMode.CREATE,
+                                                     user=None)).classes(BUTTON_CLASSES_ACCEPT)
+        current_user.get_all_from_family()
+        for user in current_user.get_all_from_family():
+            with ui.card():
+                user_card(user)
+
 
 @ui.refreshable
 def render_profile_page(session: SessionDep):
@@ -87,38 +220,15 @@ def render_profile_page(session: SessionDep):
     # ui.dark_mode().bind_value(nicegui.app.storage.user, 'dark_mode')
     # # And also bind it to the checkbox to control this
     # ui.checkbox('dark mode').bind_value(nicegui.app.storage.user, 'dark_mode')
+
     with grid():
         with card():
             card_title("My information")
-            with ui.card_section():
-                with ui.row():
-                    ui.input('First Name',
-                             validation={'Need to provide a valid first name': lambda value: len(value) > 0 }
-                             ).on('keydown.enter', apply_profile_update).bind_value(current_user,
-                                                                                                'first_name')
-                    ui.input('Last Name',
-                             validation={'Need to provide a valid last name': lambda value: len(value) > 0 }
-                             ).on('keydown.enter', apply_profile_update).bind_value(current_user,
-                                                                                               'last_name')
-                with ui.row():
-                    ui.input('📧 Email').on('keydown.enter', apply_profile_update).bind_value(current_user, 'email')
-                    ui.input('☎️ Phone number').on('keydown.enter', apply_profile_update).bind_value(current_user, 'phone_number')
-
-                with ui.row():
-                    ui.select(list(get_args(Gender)), label='Gender').bind_value(current_user, 'gender').classes('w-full')
-            with ui.card_section():
-                with ui.row():
-                    ui.button('Update my information', on_click=apply_profile_update).classes(BUTTON_CLASSES_ACCEPT)
+            user_card(current_user)
 
     def apply_family_update() -> None:
         ui.notify(f'Family updated for username {nicegui.app.storage.user.get("username")}', color='positive')
         family.save(session=session)
-
-
-    # # Bind the dark_mode value to the nicegui.app.storage.user object
-    # ui.dark_mode().bind_value(nicegui.app.storage.user, 'dark_mode')
-    # # And also bind it to the checkbox to control this
-    # ui.checkbox('dark mode').bind_value(nicegui.app.storage.user, 'dark_mode')
 
     with grid():
         with card():
@@ -157,18 +267,4 @@ def render_profile_page(session: SessionDep):
                     with ui.row():
                         ui.markdown("You are not part of a family. [Please update your profile](/my-profile).").classes('text-lg font-bold text-red-500')
 
-        with card().bind_visibility_from(current_user, "has_valid_family"):
-            card_title("My Family Members (grown ups and cub scouts)")
-            with ui.card_section():
-                current_user.get_all_from_family()
-                additional_exclude = ['family_id', 'is_admin', 'can_login',
-                                      'email', 'phone_number', 'username', 'email_confirmed', 'email_confirmation_code']
-                config = NiceCRUDConfig(additional_exclude=additional_exclude,
-                                        column_count=1,
-                                        heading="All Family Members (including yourself)",
-                                        add_button_text="Add new family member",
-                                        delete_button_text="Remove family member",
-                                        new_item_dialog_heading="Add a new Family Member",
-                                        update_item_dialog_heading="Update Family Member")
-                NiceCRUDWithSQL(basemodeltype=User, basemodels=current_user.get_all_from_family(),
-                                config=config)
+        family_members(session=session)

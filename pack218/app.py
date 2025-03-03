@@ -7,7 +7,6 @@ Here we just demonstrate the NiceGUI integration.
 import logging
 import os
 from contextlib import asynccontextmanager
-from operator import index
 from typing import Optional
 
 from fastapi import Request, FastAPI
@@ -63,13 +62,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(lifespan=lifespan)
 nicegui.app.add_middleware(AuthMiddleware)
+
 # Get this file's directory using __file__ and append the images folder
 current_file_path = os.path.abspath(__file__)
 current_directory = os.path.dirname(current_file_path)
 nicegui.app.add_static_files('/images', f'{current_directory}/images')
-
-
-
 
 
 # Pages

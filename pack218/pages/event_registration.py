@@ -85,7 +85,7 @@ def render_page_event_registration(session: Session, event_id: int):
                                             "Stay Saturday Night",
                                             value=current_event_registration is not None and current_event_registration.stay_saturday_night)
                                     with ui.card_section():
-                                        ui.label(f"Select all the meals that you wish to be included with your experience")
+                                        ui.label(f"Select all the meals that you wish to be included ($5 per meal/person)")
                                         user_to_fields[u.id]["eat_saturday_breakfast"] = ui.checkbox(
                                             "Saturday Breakfast",
                                             value=current_event_registration is not None and current_event_registration.eat_saturday_breakfast)

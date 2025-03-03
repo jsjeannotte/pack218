@@ -2,7 +2,7 @@
 FROM ubuntu:latest
 
 # The installer requires curl (and certificates) to download the release archive
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates build-essential libpq-dev
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates build-essential libpq-dev git
 
 # Download the latest installer
 ADD https://astral.sh/uv/install.sh /uv-installer.sh

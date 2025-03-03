@@ -4,7 +4,8 @@ Simple website for CubScout Pack 218
 ## Local setup
 
 ```shell
-$ python3 -m venv .venv
+$ uv python install 3.11
+$ uv venv --python 3.11
 $ source .venv/bin/activate
 $ uv pip compile requirements.in -o requirements.txt
 $ uv pip install -r requirements.txt
@@ -92,6 +93,5 @@ alembic upgrade head
 
 ## TODO
 
-- Email confirmations
 - Password reset emails
 - 

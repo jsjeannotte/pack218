@@ -41,6 +41,7 @@ class EventRegistration(SQLModelWithSave, table=True, title="Event Registration"
     eat_saturday_dinner: bool = Field(default=False, title="Will enjoy Saturday's dinner")
     eat_sunday_breakfast: bool = Field(default=False, title="Will enjoy Sunday's breakfast")
 
+    has_paid: bool = Field(default=False, title="Has paid for the event")
 
     @property
     def user(self) -> 'User':
@@ -193,10 +194,11 @@ class User(SQLModelWithSave, table=True):
     has_food_allergies: bool = Field(default=False, title="Has Food Allergies")
     food_allergies_detail: str = Field(default="",
                                        title="Food Allergies Details",
-                                       description="textarea:🚨Please list all food allergies where a risk of anaphylaxis shock exists. "
+                                       description="🚨Please list all food allergies where a risk of anaphylaxis shock exists. "
                                                    "<br /><b>Note that you are responsible for bringing an EpiPen for "
                                                    "cases of emergencies.</b>")
 
+    has_food_intolerances: bool = Field(default=False, title="Has Food Intolerances")
     food_intolerances: str = Field(default="", title="Food Intolerances")
 
     # Login/Registration related fields

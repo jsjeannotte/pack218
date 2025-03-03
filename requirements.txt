@@ -109,7 +109,11 @@ multidict==6.1.0
     # via
     #   aiohttp
     #   yarl
-nicegui==2.10.1
+nicegui==2.11.1
+    # via
+    #   -r requirements.in
+    #   niceguicrud
+niceguicrud @ git+https://github.com/jsjeannotte/nicecrud.git@1fae6a0b2f63555ff6c9da4dc18b8706d7bb6f4d
     # via -r requirements.in
 oauthlib==3.2.2
     # via requests-oauthlib
@@ -128,7 +132,7 @@ protobuf==5.29.3
     #   proto-plus
 pscript==0.7.7
     # via vbuild
-psycopg==3.2.4
+psycopg==3.2.5
     # via -r requirements.in
 pyasn1==0.6.1
     # via

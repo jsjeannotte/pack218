@@ -1,7 +1,7 @@
 fastapi
-nicegui
-# niceguicrud
-# -e vendor/nicecrud
+nicegui>=2.11.1
+# niceguicrud  # Using a fork for now and we'll see if I can get that merged upstream
+niceguicrud @ git+https://github.com/jsjeannotte/nicecrud.git@main
 bcrypt
 sqlmodel
 alembic
