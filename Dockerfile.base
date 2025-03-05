@@ -20,5 +20,5 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 ENV PATH="/root/.cargo/bin:$PATH"
 
 # Using uv, install python
-RUN uv python install 3.11
+RUN uv python install 3.13
 
