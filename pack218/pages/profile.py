@@ -221,10 +221,10 @@ def render_profile_page(session: SessionDep):
     # # And also bind it to the checkbox to control this
     # ui.checkbox('dark mode').bind_value(nicegui.app.storage.user, 'dark_mode')
 
-    with grid():
-        with card():
-            card_title("My information")
-            user_card(current_user)
+    # with grid():
+    #     with card():
+    #         card_title("My information")
+    #         user_card(current_user)
 
     def apply_family_update() -> None:
         ui.notify(f'Family updated for username {nicegui.app.storage.user.get("username")}', color='positive')
