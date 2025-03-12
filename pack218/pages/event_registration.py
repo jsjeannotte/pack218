@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import uuid
+from functools import partial
 from typing import Optional
 
 from nicegui import ui
@@ -14,7 +15,7 @@ from pack218.config import config
 from pack218.email import send_message
 from pack218.entities.models import EventRegistration, Event, User
 
-from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT, card_title, card, simple_dialog
+from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT, card_title, card, simple_dialog, BUTTON_CLASSES_CANCEL
 from pack218.pages.utils import validate_new_password
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,10 @@ def render_page_event_registration(session: Session, event_id: int):
 
                         user_to_fields = {}
 
+                        def set_all_dates(value: bool, user_id: int):
+                            for field_name, field_checkbox in user_to_fields[user_id].items():
+                                field_checkbox.value = value
+
                         # For each family member, create a ui.card with a form to register them
                         for u in current_user.get_all_from_family():
 
@@ -75,6 +80,13 @@ def render_page_event_registration(session: Session, event_id: int):
                             user_to_fields[u.id] = {}
                             with ui.card().tight():
                                 card_title(f"{u.first_name} {u.last_name} ({u.family_member_type})", level=2)
+                                with ui.row():
+                                    ui.button('Select None',
+                                              on_click=partial(set_all_dates, value=False, user_id=u.id)).classes(
+                                        BUTTON_CLASSES_CANCEL)
+                                    ui.button('Select All',
+                                              on_click=partial(set_all_dates, value=True, user_id=u.id)).classes(BUTTON_CLASSES_ACCEPT)
+
                                 with card():
                                     with ui.card_section():
                                         ui.label(f"Will this family member stay overnight?")
