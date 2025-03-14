@@ -11,7 +11,7 @@ from pack218.entities.models import Family, Gender, User, FamilyMemberType
 from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog, \
     BUTTON_CLASSES_CANCEL
 from pack218.pages.utils import SessionDep
-
+from starlette.requests import Request
 logger = logging.getLogger(__name__)
 
 class CRUDMode(Enum):
@@ -21,7 +21,7 @@ class CRUDMode(Enum):
 
 
 
-def dialog_user_crud(session: Session, crud_mode:CRUDMode, user: Optional[User] = None, contact_info_required: bool = False):
+def dialog_user_crud(request: Request, session: Session, crud_mode:CRUDMode, user: Optional[User] = None, contact_info_required: bool = False):
     """
     Show a dialog to create or update a user.
     """
@@ -34,7 +34,7 @@ def dialog_user_crud(session: Session, crud_mode:CRUDMode, user: Optional[User] 
 
     def apply_changes():
         if not user.family_id:
-            user.family_id = User.get_current(session=session).family_id
+            user.family_id = User.get_current(request=request, session=session).family_id
         user.first_name = first_name.value
         user.last_name = last_name.value
         if contact_info_required:
@@ -54,7 +54,7 @@ def dialog_user_crud(session: Session, crud_mode:CRUDMode, user: Optional[User] 
         user.food_intolerances = food_intolerances.value
 
         try:
-            user.save(session=session)
+            user.save()
             dialog.close()
             render_profile_page.refresh()
         except Exception as e:
@@ -108,17 +108,7 @@ def dialog_user_crud(session: Session, crud_mode:CRUDMode, user: Optional[User] 
 
     dialog.open()
 
-# def family_info_label(user: User):
-#     if user.family:
-#         ui.label(f'👨‍👩‍👧‍👦 Family: {user.family.family_name}').classes('text-lg font-bold')
-#         ui.label(f'🚙 🛻 Cars: {user.family.car_license_plates}').classes('text-lg')
-#         ui.label(f'🚑 Primary Emergency Contact: {user.family.emergency_contact_first_name_1} {user.family.emergency_contact_last_name_1} {user.family.emergency_contact_phone_number_1}').classes('text-lg')
-#         if user.family.emergency_contact_first_name_2:
-#             ui.label(f'🚑 Secondary Emergency Contact: {user.family.emergency_contact_first_name_2} {user.family.emergency_contact_last_name_2} {user.family.emergency_contact_phone_number_2}').classes('text-lg')
-#     else:
-#         ui.label("You are not part of a family").classes('text-lg font-bold text-red-500')
-
-def user_card(user: User):
+def user_card(request: Request, session: Session, user: User):
     # Add padding
     with ui.card():
         with ui.row():
@@ -138,25 +128,25 @@ def user_card(user: User):
             with ui.row():
                 ui.label(f"🍽️ Intolerances: {user.food_intolerances}").classes('text-lg')
         with ui.row():
-            ui.button('Update', on_click=partial(dialog_user_crud, session=None, crud_mode=CRUDMode.UPDATE, user=user)).classes(BUTTON_CLASSES_ACCEPT)
+            ui.button('Update', on_click=partial(dialog_user_crud, request=request, session=session, crud_mode=CRUDMode.UPDATE, user=user)).classes(BUTTON_CLASSES_ACCEPT)
 
 @ui.refreshable
-def family_members(session: SessionDep):
-    current_user = User.get_current(session=session)
+def family_members(request: Request, session: SessionDep):
+    current_user = User.get_current(request=request, session=session)
     with card().bind_visibility_from(current_user, "has_valid_family"):
         card_title("My Family Members (grown ups and cub scouts)")
-        ui.button('Create/Add New', on_click=partial(dialog_user_crud, session=session, crud_mode=CRUDMode.CREATE,
+        ui.button('Create/Add New', on_click=partial(dialog_user_crud, request=request, session=session, crud_mode=CRUDMode.CREATE,
                                                      user=None)).classes(BUTTON_CLASSES_ACCEPT)
         current_user.get_all_from_family()
         for user in current_user.get_all_from_family():
             with ui.card():
-                user_card(user)
+                user_card(request=request, session=session, user=user)
 
 
 @ui.refreshable
-def render_profile_page(session: SessionDep):
+def render_profile_page(request: Request, session: SessionDep):
 
-    current_user = User.get_current(session=session)
+    current_user = User.get_current(request=request, session=session)
     if current_user.family:
         family = current_user.family
     else:
@@ -267,4 +257,4 @@ def render_profile_page(session: SessionDep):
                     with ui.row():
                         ui.markdown("You are not part of a family. [Please update your profile](/my-profile).").classes('text-lg font-bold text-red-500')
 
-        family_members(session=session)
+        family_members(request=request, session=session)

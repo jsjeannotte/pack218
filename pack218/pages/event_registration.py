@@ -17,12 +17,13 @@ from pack218.entities.models import EventRegistration, Event, User
 
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT, card_title, card, simple_dialog, BUTTON_CLASSES_CANCEL
 from pack218.pages.utils import validate_new_password
+from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
-def render_page_event_registration(session: Session, event_id: int):
+def render_page_event_registration(request: Request, session: Session, event_id: int):
 
-    current_user = User.get_current(session=session)
+    current_user = User.get_current(request=request, session=session)
     event = Event.get_by_id(event_id, session=session)
 
     def perform_event_registration():  # local function to avoid passing username and password as arguments

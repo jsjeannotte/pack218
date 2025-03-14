@@ -3,11 +3,11 @@ from nicegui import ui
 from pack218.entities.models import EventRegistration, Event, User
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
 from pack218.pages.utils import SessionDep
+from starlette.requests import Request
 
+def render_home_page(request: Request, session: SessionDep):
 
-def render_home_page(session: SessionDep):
-
-    current_user = User.get_current(session=session)
+    current_user = User.get_current(request=request, session=session)
     upcoming_events = Event.get_upcoming(session=session)
     past_events = Event.get_past(session=session)
     with ui.card().classes('w-full').tight():
