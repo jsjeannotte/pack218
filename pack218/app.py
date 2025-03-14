@@ -117,6 +117,13 @@ async def auth(request: Request):
     "picture":"https://lh3.googleusercontent.com/a/<...>"
     }
     """
+
+    # TODO: Make sure the Google user has a verified email
+    if not user_info.get('verified_email', False):
+        # Return a 401 response
+        return JSONResponse(status_code=401, content={"error": "Google User email is not verified. Please address this and try again."})
+
+    # Check if the user already exists
     email = user_info.get('email')
     user = User.get_by_email_or_none(email=email)
     if user is None:
@@ -134,7 +141,10 @@ async def auth(request: Request):
     # Redirect to stored referrer URL if it exists, otherwise return user info
     referrer = request.session.pop('referrer', None)
     if referrer and not referrer.endswith('/logout'):
-        return RedirectResponse(referrer)
+        # return RedirectResponse(referrer)
+        # Redurect to my-profile for now
+        # TODO: If this is the first login, redirect to /my-profile
+        return RedirectResponse("/my-profile")
     else:
         # If we are coming from /logout, redirect to /
         return RedirectResponse('/')
