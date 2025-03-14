@@ -138,16 +138,17 @@ async def auth(request: Request):
                     email_confirmation_code="N/A")
         user.save()
 
-    # Redirect to stored referrer URL if it exists, otherwise return user info
-    referrer = request.session.pop('referrer', None)
-    if referrer and not referrer.endswith('/logout'):
-        # return RedirectResponse(referrer)
-        # Redurect to my-profile for now
-        # TODO: If this is the first login, redirect to /my-profile
-        return RedirectResponse("/my-profile")
-    else:
-        # If we are coming from /logout, redirect to /
-        return RedirectResponse('/')
+    return RedirectResponse("/my-profile")
+    # # Redirect to stored referrer URL if it exists, otherwise return user info
+    # referrer = request.session.pop('referrer', None)
+    # if referrer and not referrer.endswith('/logout'):
+    #     # return RedirectResponse(referrer)
+    #     # Redurect to my-profile for now
+    #     # TODO: If this is the first login, redirect to /my-profile
+    #     return RedirectResponse("/my-profile")
+    # else:
+    #     # If we are coming from /logout, redirect to /
+    #     return RedirectResponse('/')
     # return user_info
 
 @app.get("/token")
