@@ -91,7 +91,7 @@ async def login(request: Request):
     referrer = request.headers.get('referer')
     if referrer:
         request.session['referrer'] = referrer
-    redirect_uri = request.url_for('auth')
+    redirect_uri = GOOGLE_REDIRECT_URI
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
