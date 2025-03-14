@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from pack218.entities.models import User
 from pack218.persistence import get_session
+from starlette.requests import Request
 
 
 def validate_new_password(new_password: str, new_password_confirm: str) -> bool:
@@ -20,8 +21,8 @@ def validate_new_password(new_password: str, new_password_confirm: str) -> bool:
     return True
 
 
-def assert_is_admin(session: Session) -> None:
-    if not User.current_user_is_admin(session=session):
+def assert_is_admin(request: Request, session: Session) -> None:
+    if not User.current_user_is_admin(request=request, session=session):
         ui.notify('You are not authorized to access this page', color='negative')
         raise HTTPException(status_code=403, detail="You are not authorized to access this page")
 

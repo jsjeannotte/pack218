@@ -8,7 +8,7 @@ from typing_extensions import get_args
 
 from pydantic import BeforeValidator, EmailStr, computed_field
 from pydantic_extra_types.phone_numbers import PhoneNumber
-
+from starlette.requests import Request
 from sqlalchemy import String
 from sqlmodel import Field, Session, select, Relationship
 
@@ -222,19 +222,19 @@ class User(SQLModelWithSave, table=True):
     def has_valid_family(self) -> bool:
         return self.family_id is not None and self.family != 0
 
-    def pre_save(self):
-        if self.can_login:
-            if not self.username:
-                raise ValueError("Username is required for users that can login into the system.")
-            if not self.email:
-                raise ValueError("Email is required for users that can login into the system.")
-        else:
-            self.username = None
-            if not self.family_id:
-                # Let's default to getting the same family as the current user,
-                # since this is probably the most likely use case
-                self.family_id = User.get_current().family_id
-        self.model_validate(self)
+    # def pre_save_custom(self, request: Request, session: Optional[Session] = None):
+    #     if self.can_login:
+    #         if not self.username:
+    #             raise ValueError("Username is required for users that can login into the system.")
+    #         if not self.email:
+    #             raise ValueError("Email is required for users that can login into the system.")
+    #     else:
+    #         self.username = None
+    #         if not self.family_id:
+    #             # Let's default to getting the same family as the current user,
+    #             # since this is probably the most likely use case
+    #             self.family_id = User.get_current(request=request, session=session).family_id
+    #     self.model_validate(self)
 
     @computed_field
     @property
@@ -296,20 +296,48 @@ class User(SQLModelWithSave, table=True):
             return execute_query(session)
 
     @staticmethod
-    def get_current(session: Optional[Session] = None) -> 'User':
-        return User.get_by_username(nicegui.app.storage.user['username'], session=session)
+    def get_by_username_or_none(username: str, session: Optional[Session] = None) -> Optional['User']:
+        def execute_query(s: Session) -> User:
+            statement = select(User).where(User.username == username)
+            result = s.exec(statement)
+            return result.one_or_none()
+
+        if session is None:
+            with Session(engine) as session:
+                return execute_query(session)
+        else:
+            return execute_query(session)
 
     @staticmethod
-    def current_user_is_admin(session: Optional[Session] = None) -> bool:
-        try:
-            current_user = User.get_current(session=session)
-            return current_user.is_admin
-        except NoResultFound:
-            return False
+    def get_by_email_or_none(email: str, session: Optional[Session] = None) -> Optional['User']:
+        def execute_query(s: Session) -> User:
+            statement = select(User).where(User.email == email)
+            result = s.exec(statement)
+            return result.one_or_none()
 
-    @classmethod
-    def delete_by_id(cls: Type[T], id: int, session: Optional[Session] = None):
-        # Ensure we're not trying to delete ourselves
-        if id == User.get_current(session=session).id:
-            raise ValueError("You cannot delete yourself. Ask another Admin to do it.")
-        super().delete_by_id(id=id, session=session)
+        if session is None:
+            with Session(engine) as session:
+                return execute_query(session)
+        else:
+            return execute_query(session)
+
+    @staticmethod
+    def get_current(request: Request, session: Optional[Session] = None) -> Optional['User']:
+        email = request.session.get('user', {}).get('email')
+        if email is None:
+            return None
+        return User.get_by_email_or_none(email, session=session)
+
+    @staticmethod
+    def current_user_is_admin(request: Request, session: Optional[Session] = None) -> bool:
+        current_user = User.get_current(request=request, session=session)
+        if current_user is None:
+            return False
+        return current_user.is_admin
+
+    # @classmethod
+    # def delete_by_id(cls: Type[T], id: int, session: Optional[Session] = None):
+    #     # Ensure we're not trying to delete ourselves
+    #     if id == User.get_current(request=request, session=session).id:
+    #         raise ValueError("You cannot delete yourself. Ask another Admin to do it.")
+    #     super().delete_by_id(id=id, session=session)

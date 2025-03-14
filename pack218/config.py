@@ -10,6 +10,8 @@ class Configs(BaseSettings):
     postgres_password: str
     pack218_app_url: str
     pack218_use_sqlite: bool
+    google_oauth_client_id: str
+    google_oauth_client_secret: str
 
 
     run_in_editor: bool = False

@@ -6,9 +6,9 @@ from pack218.pages.ui_components import card_title, BUTTON_CLASSES_CANCEL, BUTTO
 from pack218.pages.utils import validate_new_password
 
 
-def render_update_password_page(session: Session):
+def render_update_password_page(request: Request, session: Session):
     def apply_update_password() -> None:
-        current_user = User.get_current(session=session)
+        current_user = User.get_current(request=request, session=session)
         if not validate_new_password(new_password.value, new_password_confirm.value):
             return
         try:
