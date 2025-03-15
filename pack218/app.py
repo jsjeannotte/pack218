@@ -81,7 +81,9 @@ oauth.register(
     name='google',
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
+    redirect_uri=GOOGLE_REDIRECT_URI,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    authorize_state=config.pack218_storage_key,
     client_kwargs={'scope': 'openid email profile'}
 )
 
@@ -91,8 +93,7 @@ async def login(request: Request):
     referrer = request.headers.get('referer')
     if referrer:
         request.session['referrer'] = referrer
-    redirect_uri = GOOGLE_REDIRECT_URI
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(request, GOOGLE_REDIRECT_URI)
 
 
 @app.get("/auth")
