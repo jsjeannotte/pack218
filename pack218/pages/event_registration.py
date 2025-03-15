@@ -47,11 +47,11 @@ def render_page_event_registration(request: Request, session: Session, event_id:
                             setattr(event_registration, field_name, field_checkbox.value)
 
                         event_registration.save(session=session)
-                        ui.label(f"☑️ Registration pending for {user.first_name}.")
+                        ui.label(f"☑️ Registration completed for {user.first_name}.")
                         has_registered_user = True
             if has_registered_user:
                 with ui.card_section():
-                    ui.label('📧 We will send you a confirmation email shortly.').classes('text-lg text-italic')
+                    ui.label("Disclaimer: If we end up with more people than we can fit the group site, we're going to activate the waitlist.").classes('text-lg text-italic')
             with ui.card_section():
                 ui.button('Close').on_click(dialog.close).classes(BUTTON_CLASSES_ACCEPT)
 
