@@ -41,7 +41,8 @@ def dialog_user_crud(request: Request, session: Session, crud_mode:CRUDMode, use
             default_contact_value = ""
         else:
             default_contact_value = None
-        user.email = email.value or default_contact_value
+        # user.email = email.value or default_contact_value
+        # user.email = None
         user.phone_number = phone_number.value or default_contact_value
 
         user.family_member_type = family_member_type.value
@@ -76,7 +77,7 @@ def dialog_user_crud(request: Request, session: Session, crud_mode:CRUDMode, use
                 family_member_type = ui.select(list(get_args(FamilyMemberType)), label='Family Member Type').classes('w-full')
             with ui.row():
                 contact_info_suffix = " " if contact_info_required else " (optional)"
-                email = ui.input(f'📧 Email{contact_info_suffix}')
+                # email = ui.input(f'📧 Email{contact_info_suffix}')
                 phone_number = ui.input(f'☎️ Phone number{contact_info_suffix}')
             with ui.row():
                 gender = ui.select(list(get_args(Gender)), label='Gender').classes('w-full')
@@ -94,7 +95,7 @@ def dialog_user_crud(request: Request, session: Session, crud_mode:CRUDMode, use
             if crud_mode == CRUDMode.UPDATE:
                 first_name.bind_value(user, 'first_name')
                 last_name.bind_value(user, 'last_name')
-                email.bind_value(user, 'email')
+                # email.bind_value(user, 'email')
                 phone_number.bind_value(user, 'phone_number')
                 gender.bind_value(user, "gender")
                 family_member_type.bind_value(user, "family_member_type")
