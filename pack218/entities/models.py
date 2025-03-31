@@ -245,7 +245,13 @@ class User(SQLModelWithSave, table=True):
         if self.has_food_allergies:
             p += "*"
         return p
-        
+
+    @property
+    def contact_name_email(self):
+        if self.email:
+            return f"{self.first_name} {self.last_name} <{self.email}>"
+        else:
+            return f""
 
     # def pre_save_custom(self, request: Request, session: Optional[Session] = None):
     #     if self.can_login:

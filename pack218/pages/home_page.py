@@ -16,9 +16,9 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         
         is_admin = User.get_current(request=request, session=session).is_admin
         if is_admin:
-            cols = ["Family", "Participants", "Cost", "Allergies"]
+            cols = ["Family", "Participant", "Cost", "Allergies", "Email"]
         else:
-            cols = ["Family", "Participants", "Cost"]
+            cols = ["Family", "Participant", "Cost"]
 
 
         def header(text: str):
@@ -39,6 +39,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 cell(r.cost)
                 if is_admin:
                     cell(u.food_allergies_detail)
+                    cell(u.contact_name_email)
 
 def render_home_page(request: Request, session: SessionDep):
 
