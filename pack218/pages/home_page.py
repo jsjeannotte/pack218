@@ -1,9 +1,44 @@
 from nicegui import ui
 
-from pack218.entities.models import EventRegistration, Event, User
+from pack218.entities.models import EventRegistration, Event, User, Family
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
 from pack218.pages.utils import SessionDep
 from starlette.requests import Request
+
+
+def render_participants_table(event: Event, request: Request, session: SessionDep):
+
+    registrations = event.get_registrations(session=session)
+
+    # participants = event.get_participants(session=session)
+    with ui.expansion(f'Participants ({len(registrations)})', icon='expand_more').classes('w-full bg-grey-2'):
+        # Generate the list of participants
+        
+        is_admin = User.get_current(request=request, session=session).is_admin
+        if is_admin:
+            cols = ["Family", "Participants", "Cost", "Allergies"]
+        else:
+            cols = ["Family", "Participants", "Cost"]
+
+
+        def header(text: str):
+            return ui.label(text).classes('text-lg font-bold border p-1')
+
+        def cell(text: str):
+            return ui.label(text).classes('border p-1')
+
+        with ui.grid(columns=len(cols)).classes('gap-0'):
+            for col in cols:
+                header(col)
+            
+            for r in sorted(registrations, key=lambda r: r.user(session=session).family.family_name):
+                u = r.user(session=session)
+                family = Family.get_by_id(u.family_id, session=session)
+                cell(family.family_name)
+                cell(u.participant_str)
+                cell(r.cost)
+                if is_admin:
+                    cell(u.food_allergies_detail)
 
 def render_home_page(request: Request, session: SessionDep):
 
@@ -24,13 +59,9 @@ def render_home_page(request: Request, session: SessionDep):
                             with ui.expansion('More details', icon='expand_more').classes('w-full bg-grey-2'):
                                 ui.markdown(event.details).classes('w-full h-[calc(100vh-2rem)]')
 
-                            participants = event.get_participants(session=session)
-                            with ui.expansion(f'Participants ({len(participants)})', icon='expand_more').classes('w-full bg-grey-2'):
-                                # Generate the list of participants
-                                participants_md = ""
-                                for u in participants:
-                                    participants_md += " * " + f"{u.first_name} {u.last_name} ({u.family_member_type})\n"
-                                ui.markdown(participants_md)
+                            render_participants_table(event=event, request=request, session=session)
+
+                            ui.markdown(f"Your cost: **${event.get_family_cost(session=session, family_id=current_user.family_id)}**")
 
                             # For each users in the family, check if they're registered
                             is_registered = False
