@@ -43,9 +43,12 @@ class EventRegistration(SQLModelWithSave, table=True, title="Event Registration"
 
     has_paid: bool = Field(default=False, title="Has paid for the event")
 
+    def user(self, session: Session) -> 'User':
+        return User.get_by_id(id=self.user_id, session=session)
+
     @property
-    def user(self) -> 'User':
-        return User.get_by_id(id=self.user_id, session=self.session)
+    def cost(self) -> int:
+        return sum([self.eat_saturday_breakfast, self.eat_saturday_dinner, self.eat_saturday_lunch, self.eat_sunday_breakfast]) * 5
 
     @staticmethod
     def select_by_event(session: Session, event_id: int) -> List['EventRegistration']:
@@ -103,7 +106,21 @@ class Event(SQLModelWithSave, table=True, title="Event"):
         statement = select(User).join(EventRegistration).where(EventRegistration.event_id == self.id)
         results = session.exec(statement)
         return list(results.all())
-        # return [er.user for er in EventRegistration.select_by_event(session=session, event_id=self.id)]
+
+    def get_registrations_by_family_id(self, session: Session, family_id: int) -> List[EventRegistration]:
+        statement = select(EventRegistration).join(User).where(User.family_id == family_id).where(EventRegistration.event_id == self.id)
+        results = session.exec(statement)
+        return list(results.all())
+
+    def get_family_cost(self, session: Session, family_id: int) -> int:
+        registrations = self.get_registrations_by_family_id(session=session, family_id=family_id)
+        total_cost = 0
+        for registration in registrations:
+            total_cost += registration.cost
+        return total_cost
+
+    def get_registrations(self, session: Session) -> List['EventRegistration']:
+        return EventRegistration.select_by_event(session=session, event_id=self.id)
 
     @property
     def date_as_datetime(self) -> datetime:
@@ -221,6 +238,14 @@ class User(SQLModelWithSave, table=True):
     @property
     def has_valid_family(self) -> bool:
         return self.family_id is not None and self.family != 0
+
+    @property
+    def participant_str(self) -> str:
+        p = f"{self.first_name} {self.last_name} ({self.family_member_type})"
+        if self.has_food_allergies:
+            p += "*"
+        return p
+        
 
     # def pre_save_custom(self, request: Request, session: Optional[Session] = None):
     #     if self.can_login:
