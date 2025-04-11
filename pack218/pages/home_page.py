@@ -62,8 +62,6 @@ def render_home_page(request: Request, session: SessionDep):
 
                             render_participants_table(event=event, request=request, session=session)
 
-                            ui.markdown(f"Your cost: **${event.get_family_cost(session=session, family_id=current_user.family_id)}**")
-
                             # For each users in the family, check if they're registered
                             is_registered = False
                             for u in current_user.get_all_from_family():
@@ -72,8 +70,10 @@ def render_home_page(request: Request, session: SessionDep):
                                     is_registered = True
                                     break
                             if is_registered:
+                                ui.markdown(f"Your cost: **${event.get_family_cost(session=session, family_id=current_user.family_id)}**")
                                 ui.label("🎉 You are registered! Click below to update the details of your registration").classes('text-lg text-italic')
-                            ui.button('Update registration' if is_registered else 'Register').on_click(lambda: ui.navigate.to(f'/event-registration/{event.id}')).classes(BUTTON_CLASSES_ACCEPT)
+                            registration_page_url = f'/event-registration/{event.id}'
+                            ui.button('Update registration' if is_registered else f'Register').on_click(lambda: ui.navigate.to(registration_page_url)).classes(BUTTON_CLASSES_ACCEPT)
                 else:
                     ui.label('No upcoming events found. Come back soon!').classes('text-lg font-bold text-red-500')
 
