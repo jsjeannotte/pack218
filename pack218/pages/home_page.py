@@ -52,25 +52,49 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         table_export_buttons(table_columns, table_rows, filename=f"participants_event_{event.id}")
         ui.table(columns=table_columns, rows=table_rows).props('flat dense separator="horizontal"').classes('w-full')
     
-    # Per-family cost summary
-    family_costs = {}
-    for r in registrations:
-        u = r.user(session=session)
-        family = Family.get_by_id(u.family_id, session=session)
-        current_total = family_costs.get(family.family_name)
-        family_costs[family.family_name] = (current_total + r.cost) if current_total is not None else r.cost
-
-    with ui.expansion(f'Costs by family ({len(family_costs)})', icon='expand_more').classes('w-full bg-grey-2'):
-        cost_columns = [
-            {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
-            {'name': 'total', 'label': 'Total', 'field': 'total', 'sortable': True, 'align': 'right'},
-        ]
-        cost_rows = [{'family': name, 'total': family_costs[name]} for name in sorted(family_costs.keys())]
-        table_export_buttons(cost_columns, cost_rows, filename=f"costs_by_family_event_{event.id}")
-        ui.table(columns=cost_columns, rows=cost_rows).props('flat dense separator="horizontal"').classes('w-full')
-
-    # Admin-only: meal totals
     if is_admin:
+    # Per-family cost summary
+        families_summary = {}
+        for r in registrations:
+            u = r.user(session=session)
+            family = Family.get_by_id(u.family_id, session=session)
+            if not family:
+                continue
+            summary = families_summary.get(family.family_name)
+            if summary is None:
+                summary = {
+                    'total': 0,
+                    'emails': set(),
+                    'phones': set(),
+                }
+            summary['total'] += r.cost
+            if u.email:
+                summary['emails'].add(str(u.email))
+            if u.phone_number:
+                summary['phones'].add(str(u.phone_number))
+            families_summary[family.family_name] = summary
+
+        with ui.expansion(f'Costs by family ({len(families_summary)})', icon='expand_more').classes('w-full bg-grey-2'):
+            cost_columns = [
+                {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
+                {'name': 'total', 'label': 'Total', 'field': 'total', 'sortable': True, 'align': 'right'},
+                {'name': 'emails', 'label': 'Emails', 'field': 'emails'},
+                {'name': 'phones', 'label': 'Phones', 'field': 'phones'},
+            ]
+            cost_rows = []
+            for name in sorted(families_summary.keys()):
+                summary = families_summary[name]
+                row = {
+                    'family': name, 
+                    'total': summary['total'], 
+                    'emails': ', '.join(sorted(summary['emails'])),
+                    'phones': ', '.join(sorted(summary['phones'])),
+                }
+                cost_rows.append(row)
+            table_export_buttons(cost_columns, cost_rows, filename=f"costs_by_family_event_{event.id}")
+            ui.table(columns=cost_columns, rows=cost_rows).props('flat dense separator="horizontal"').classes('w-full')
+
+        # Admin-only: meal totals
         meal_rows = [
             ("Saturday breakfast", sum(1 for r in registrations if r.eat_saturday_breakfast)),
             ("Saturday lunch", sum(1 for r in registrations if r.eat_saturday_lunch)),
@@ -86,8 +110,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             table_export_buttons(meal_columns, meal_rows_data, filename=f"meal_totals_event_{event.id}")
             ui.table(columns=meal_columns, rows=meal_rows_data).props('flat dense separator="horizontal"').classes('w-full')
 
-    # Admin-only: list of participant emails for easy copy/paste
-    if is_admin:
+        # Admin-only: list of participant emails for easy copy/paste
         emails_set = set()
         for r in registrations:
             u = r.user(session=session)
@@ -97,8 +120,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         with ui.expansion(f'Emails of participants ({len(emails)})', icon='mail').classes('w-full bg-grey-2'):
             ui.textarea(value=', '.join(emails)).props('readonly').classes('w-full')
 
-    # Admin-only: phone numbers
-    if is_admin:
+        # Admin-only: phone numbers
         phone_numbers_set = set()
         for r in registrations:
             u = r.user(session=session)
@@ -108,8 +130,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         with ui.expansion(f'Phone numbers of participants ({len(phone_numbers)})', icon='call').classes('w-full bg-grey-2'):
             ui.textarea(value=', '.join(phone_numbers)).props('readonly').classes('w-full')
     
-    # Admin-only: emergency contacts & license plates by family
-    if is_admin:
+        # Admin-only: emergency contacts & license plates by family
         families_by_id = {}
         for r in registrations:
             u = r.user(session=session)
