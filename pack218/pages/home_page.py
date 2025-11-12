@@ -107,6 +107,74 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         phone_numbers = sorted(phone_numbers_set)
         with ui.expansion(f'Phone numbers of participants ({len(phone_numbers)})', icon='call').classes('w-full bg-grey-2'):
             ui.textarea(value=', '.join(phone_numbers)).props('readonly').classes('w-full')
+    
+    # Admin-only: emergency contacts & license plates by family
+    if is_admin:
+        families_by_id = {}
+        for r in registrations:
+            u = r.user(session=session)
+            family = Family.get_by_id(u.family_id, session=session)
+            if family:
+                families_by_id[family.id] = family
+        families = sorted(families_by_id.values(), key=lambda f: f.family_name or "")
+        with ui.expansion(f'Emergency contacts & license plates ({len(families)})', icon='contact_emergency').classes('w-full bg-grey-2'):
+            table_columns = [
+                {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
+                {'name': 'contact1', 'label': 'Contact 1', 'field': 'contact1'},
+                {'name': 'phone1', 'label': 'Phone 1', 'field': 'phone1'},
+                {'name': 'contact2', 'label': 'Contact 2', 'field': 'contact2'},
+                {'name': 'phone2', 'label': 'Phone 2', 'field': 'phone2'},
+                {'name': 'license', 'label': 'License plates', 'field': 'license'},
+            ]
+            table_rows = []
+            for family in families:
+                contact1 = f"{family.emergency_contact_first_name_1} {family.emergency_contact_last_name_1}".strip()
+                contact2 = f"{family.emergency_contact_first_name_2} {family.emergency_contact_last_name_2}".strip()
+                table_rows.append({
+                    'family': family.family_name,
+                    'contact1': contact1,
+                    'phone1': family.emergency_contact_phone_number_1 or "",
+                    'contact2': contact2,
+                    'phone2': family.emergency_contact_phone_number_2 or "",
+                    'license': family.car_license_plates or "",
+                })
+            # Prepare Markdown for clipboard copy
+            headers = ["Family", "Contact 1", "Phone 1", "Contact 2", "Phone 2", "License plates"]
+            md_lines = [
+                "| " + " | ".join(headers) + " |",
+                "|---|---|---|---|---|---|",
+            ]
+            def esc(v: str) -> str:
+                return v.replace("|", "\\|")
+            for row in table_rows:
+                md_lines.append("| " + " | ".join([
+                    esc(row['family']),
+                    esc(row['contact1']),
+                    esc(row['phone1']),
+                    esc(row['contact2']),
+                    esc(row['phone2']),
+                    esc(row['license']),
+                ]) + " |")
+            contacts_md = '\n'.join(md_lines)
+
+            # Hidden textarea to source clipboard text
+            hidden_id = f"emergency_contacts_{event.id}_tsv"
+            ui.textarea(value=contacts_md).props(f'id="{hidden_id}" readonly').classes('hidden')
+
+            def copy_emergency_contacts_to_clipboard():
+                js = f'''
+                const el = document.getElementById("{hidden_id}");
+                if (el) {{
+                  el.select();
+                  el.setSelectionRange(0, 999999);
+                  navigator.clipboard.writeText(el.value);
+                }}
+                '''
+                ui.run_javascript(js)
+                ui.notify('Copied emergency contacts table (Markdown) to clipboard')
+
+            ui.button('Copy table as Markdown to clipboard', icon='content_copy').on_click(copy_emergency_contacts_to_clipboard)
+            ui.table(columns=table_columns, rows=table_rows).classes('w-full')
                     
 def render_home_page(request: Request, session: SessionDep):
 
