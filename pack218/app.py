@@ -214,6 +214,7 @@ def chrome(request: Request, session: Session):
             if User.current_user_is_admin(request=request, session=session):
                 ui.label('Admin')
                 ui.link('Events', admin_events)
+                ui.link('Create Event', admin_events_new)
                 ui.link('Users', admin_users)
                 ui.link('Families', admin_families)
 
@@ -266,6 +267,50 @@ def admin_events(request: Request, session: SessionDep) -> None:
         return redirect
     ui.label('This is the admin page for the events.')
     NiceCRUDWithSQL(basemodeltype=Event, basemodels=list(Event.get_all()), heading="Events")
+
+@ui.page('/admin/events/new')
+def admin_events_new(request: Request, session: SessionDep) -> None:
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+
+    ui.label('Create a new Camping Event').classes('text-lg font-bold mb-2')
+    with ui.card().classes('w-full p-4').tight():
+        with ui.grid(columns=3).classes('w-full gap-4 items-start'):
+            date_input = ui.input('Date (YYYY-MM-DD)').props('type=date dense outlined').classes('w-full')
+            location_input = ui.input('Location').props('dense outlined').classes('w-full')
+            duration_input = ui.input('Duration in days').props('type=number dense outlined').classes('w-full')
+        details_input = ui.textarea('Details (markdown supported)').props('outlined').classes('w-full h-40 mt-2')
+
+        def create_event():
+            date_value = (date_input.value or '').strip()
+            location_value = (location_input.value or '').strip()
+            duration_value = duration_input.value or '2'
+            details_value = details_input.value or ''
+
+            if not date_value or not location_value:
+                ui.notify('Please provide date and location', type='warning')
+                return
+            try:
+                duration_days = int(duration_value)
+            except Exception:
+                duration_days = 2
+
+            event = Event(
+                event_type='Camping',
+                date=date_value,
+                location=location_value,
+                details=details_value,
+                duration_in_days=duration_days,
+            )
+            event.save()
+            ui.notify('Event created')
+            ui.navigate.to('/admin/events')
+
+        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+            ui.button('Cancel', on_click=lambda: ui.navigate.to('/admin/events')).props('outline')
+            ui.button('Create Event', icon='add').on_click(create_event).classes(BUTTON_CLASSES_ACCEPT)
 
 @ui.page('/admin/users')
 def admin_users(request: Request, session: SessionDep) -> None:
