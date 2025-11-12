@@ -18,7 +18,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         
         is_admin = User.get_current(request=request, session=session).is_admin
         if is_admin:
-            cols = ["Family", "Participant", "Cost", "Allergies", "Email"]
+            cols = ["Family", "Participant", "Cost", "Allergies", "Email", "Phone"]
         else:
             cols = ["Family", "Participant", "Cost"]
 
@@ -42,6 +42,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 if is_admin:
                     cell(u.food_allergies_detail)
                     cell(u.contact_name_email)
+                    cell(u.phone_number if u.phone_number else "")
     
     # Per-family cost summary
     family_costs = {}
@@ -69,17 +70,6 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 cell(family_name)
                 cell(family_costs[family_name])
 
-    # Admin-only: list of participant emails for easy copy/paste
-    if is_admin:
-        emails_set = set()
-        for r in registrations:
-            u = r.user(session=session)
-            if u.email:
-                emails_set.add(str(u.email))
-        emails = sorted(emails_set)
-        with ui.expansion(f'Emails of participants ({len(emails)})', icon='mail').classes('w-full bg-grey-2'):
-            ui.textarea(value=', '.join(emails)).props('readonly').classes('w-full')
-
     # Admin-only: meal totals
     if is_admin:
         meal_rows = [
@@ -95,6 +85,28 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 for meal_name, count in meal_rows:
                     cell(meal_name)
                     cell(count)
+
+    # Admin-only: list of participant emails for easy copy/paste
+    if is_admin:
+        emails_set = set()
+        for r in registrations:
+            u = r.user(session=session)
+            if u.email:
+                emails_set.add(str(u.email))
+        emails = sorted(emails_set)
+        with ui.expansion(f'Emails of participants ({len(emails)})', icon='mail').classes('w-full bg-grey-2'):
+            ui.textarea(value=', '.join(emails)).props('readonly').classes('w-full')
+
+    # Admin-only: phone numbers
+    if is_admin:
+        phone_numbers_set = set()
+        for r in registrations:
+            u = r.user(session=session)
+            if u.phone_number:
+                phone_numbers_set.add(str(u.phone_number))
+        phone_numbers = sorted(phone_numbers_set)
+        with ui.expansion(f'Phone numbers of participants ({len(phone_numbers)})', icon='call').classes('w-full bg-grey-2'):
+            ui.textarea(value=', '.join(phone_numbers)).props('readonly').classes('w-full')
                     
 def render_home_page(request: Request, session: SessionDep):
 
