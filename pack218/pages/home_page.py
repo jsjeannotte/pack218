@@ -1,4 +1,6 @@
 from nicegui import ui
+import csv
+import io
 
 from pack218.entities.models import EventRegistration, Event, User, Family
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
@@ -24,8 +26,8 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         def header(text: str):
             return ui.label(text).classes('text-lg font-bold border p-1')
 
-        def cell(text: str):
-            return ui.label(text).classes('border p-1')
+        def cell(text: object):
+            return ui.label(str(text)).classes('border p-1')
 
         with ui.grid(columns=len(cols)).classes('gap-0'):
             for col in cols:
@@ -40,6 +42,32 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 if is_admin:
                     cell(u.food_allergies_detail)
                     cell(u.contact_name_email)
+    
+    # Per-family cost summary
+    family_costs = {}
+    for r in registrations:
+        u = r.user(session=session)
+        family = Family.get_by_id(u.family_id, session=session)
+        current_total = family_costs.get(family.family_name)
+        family_costs[family.family_name] = (current_total + r.cost) if current_total is not None else r.cost
+
+    def download_family_costs():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Family", "Total"])
+        for family_name in sorted(family_costs.keys()):
+            writer.writerow([family_name, family_costs[family_name]])
+        ui.download(buffer.getvalue().encode("utf-8"), f"costs_by_family_event_{event.id}.csv")
+    
+    with ui.expansion(f'Costs by family ({len(family_costs)})', icon='expand_more').classes('w-full bg-grey-2'):
+        if is_admin:
+            ui.button('Download CSV', icon='file_download').on_click(download_family_costs)
+        with ui.grid(columns=2).classes('gap-0'):
+            header("Family")
+            header("Total")
+            for family_name in sorted(family_costs.keys()):
+                cell(family_name)
+                cell(family_costs[family_name])
 
 def render_home_page(request: Request, session: SessionDep):
 
