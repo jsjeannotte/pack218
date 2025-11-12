@@ -1,9 +1,7 @@
 from nicegui import ui
-import csv
-import io
 
 from pack218.entities.models import EventRegistration, Event, User, Family
-from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
+from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT, table_export_buttons
 from pack218.pages.utils import SessionDep
 from starlette.requests import Request
 
@@ -23,26 +21,36 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             cols = ["Family", "Participant", "Cost"]
 
 
-        def header(text: str):
-            return ui.label(text).classes('text-lg font-bold border p-1')
-
-        def cell(text: object):
-            return ui.label(str(text)).classes('border p-1')
-
-        with ui.grid(columns=len(cols)).classes('gap-0'):
-            for col in cols:
-                header(col)
-            
-            for r in sorted(registrations, key=lambda r: r.user(session=session).family.family_name):
-                u = r.user(session=session)
-                family = Family.get_by_id(u.family_id, session=session)
-                cell(family.family_name)
-                cell(u.participant_str)
-                cell(r.cost)
-                if is_admin:
-                    cell(u.food_allergies_detail)
-                    cell(u.contact_name_email)
-                    cell(u.phone_number if u.phone_number else "")
+        # Participants table
+        table_columns = [
+            {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
+            {'name': 'participant', 'label': 'Participant', 'field': 'participant', 'sortable': True},
+            {'name': 'cost', 'label': 'Cost', 'field': 'cost', 'sortable': True, 'align': 'right'},
+        ]
+        if is_admin:
+            table_columns.extend([
+                {'name': 'allergies', 'label': 'Allergies', 'field': 'allergies'},
+                {'name': 'email', 'label': 'Email', 'field': 'email'},
+                {'name': 'phone', 'label': 'Phone', 'field': 'phone'},
+            ])
+        table_rows = []
+        for r in sorted(registrations, key=lambda r: r.user(session=session).family.family_name):
+            u = r.user(session=session)
+            family = Family.get_by_id(u.family_id, session=session)
+            row = {
+                'family': family.family_name if family and family.family_name else "",
+                'participant': u.participant_str,
+                'cost': r.cost,
+            }
+            if is_admin:
+                row.update({
+                    'allergies': u.food_allergies_detail or "",
+                    'email': u.contact_name_email or "",
+                    'phone': u.phone_number if u.phone_number else "",
+                })
+            table_rows.append(row)
+        table_export_buttons(table_columns, table_rows, filename=f"participants_event_{event.id}")
+        ui.table(columns=table_columns, rows=table_rows).props('flat dense separator="horizontal"').classes('w-full')
     
     # Per-family cost summary
     family_costs = {}
@@ -52,23 +60,14 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
         current_total = family_costs.get(family.family_name)
         family_costs[family.family_name] = (current_total + r.cost) if current_total is not None else r.cost
 
-    def download_family_costs():
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(["Family", "Total"])
-        for family_name in sorted(family_costs.keys()):
-            writer.writerow([family_name, family_costs[family_name]])
-        ui.download(buffer.getvalue().encode("utf-8"), f"costs_by_family_event_{event.id}.csv")
-    
     with ui.expansion(f'Costs by family ({len(family_costs)})', icon='expand_more').classes('w-full bg-grey-2'):
-        if is_admin:
-            ui.button('Download CSV', icon='file_download').on_click(download_family_costs)
-        with ui.grid(columns=2).classes('gap-0'):
-            header("Family")
-            header("Total")
-            for family_name in sorted(family_costs.keys()):
-                cell(family_name)
-                cell(family_costs[family_name])
+        cost_columns = [
+            {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
+            {'name': 'total', 'label': 'Total', 'field': 'total', 'sortable': True, 'align': 'right'},
+        ]
+        cost_rows = [{'family': name, 'total': family_costs[name]} for name in sorted(family_costs.keys())]
+        table_export_buttons(cost_columns, cost_rows, filename=f"costs_by_family_event_{event.id}")
+        ui.table(columns=cost_columns, rows=cost_rows).props('flat dense separator="horizontal"').classes('w-full')
 
     # Admin-only: meal totals
     if is_admin:
@@ -79,12 +78,13 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             ("Sunday breakfast", sum(1 for r in registrations if r.eat_sunday_breakfast)),
         ]
         with ui.expansion('Meal totals', icon='restaurant').classes('w-full bg-grey-2'):
-            with ui.grid(columns=2).classes('gap-0'):
-                header("Meal")
-                header("Total")
-                for meal_name, count in meal_rows:
-                    cell(meal_name)
-                    cell(count)
+            meal_columns = [
+                {'name': 'meal', 'label': 'Meal', 'field': 'meal', 'sortable': True},
+                {'name': 'total', 'label': 'Total', 'field': 'total', 'sortable': True, 'align': 'right'},
+            ]
+            meal_rows_data = [{'meal': meal_name, 'total': count} for meal_name, count in meal_rows]
+            table_export_buttons(meal_columns, meal_rows_data, filename=f"meal_totals_event_{event.id}")
+            ui.table(columns=meal_columns, rows=meal_rows_data).props('flat dense separator="horizontal"').classes('w-full')
 
     # Admin-only: list of participant emails for easy copy/paste
     if is_admin:
@@ -138,43 +138,8 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                     'phone2': family.emergency_contact_phone_number_2 or "",
                     'license': family.car_license_plates or "",
                 })
-            # Prepare Markdown for clipboard copy
-            headers = ["Family", "Contact 1", "Phone 1", "Contact 2", "Phone 2", "License plates"]
-            md_lines = [
-                "| " + " | ".join(headers) + " |",
-                "|---|---|---|---|---|---|",
-            ]
-            def esc(v: str) -> str:
-                return v.replace("|", "\\|")
-            for row in table_rows:
-                md_lines.append("| " + " | ".join([
-                    esc(row['family']),
-                    esc(row['contact1']),
-                    esc(row['phone1']),
-                    esc(row['contact2']),
-                    esc(row['phone2']),
-                    esc(row['license']),
-                ]) + " |")
-            contacts_md = '\n'.join(md_lines)
-
-            # Hidden textarea to source clipboard text
-            hidden_id = f"emergency_contacts_{event.id}_tsv"
-            ui.textarea(value=contacts_md).props(f'id="{hidden_id}" readonly').classes('hidden')
-
-            def copy_emergency_contacts_to_clipboard():
-                js = f'''
-                const el = document.getElementById("{hidden_id}");
-                if (el) {{
-                  el.select();
-                  el.setSelectionRange(0, 999999);
-                  navigator.clipboard.writeText(el.value);
-                }}
-                '''
-                ui.run_javascript(js)
-                ui.notify('Copied emergency contacts table (Markdown) to clipboard')
-
-            ui.button('Copy table as Markdown to clipboard', icon='content_copy').on_click(copy_emergency_contacts_to_clipboard)
-            ui.table(columns=table_columns, rows=table_rows).classes('w-full')
+            table_export_buttons(table_columns, table_rows, filename=f"emergency_contacts_event_{event.id}")
+            ui.table(columns=table_columns, rows=table_rows).props('flat separator=\"horizontal\"').classes('w-full')
                     
 def render_home_page(request: Request, session: SessionDep):
 
