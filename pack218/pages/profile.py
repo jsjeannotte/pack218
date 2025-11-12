@@ -122,7 +122,7 @@ def user_card(request: Request, session: Session, user: User):
                     ui.label(f"☎️ {user.phone_number}")
         if user.has_food_allergies:
             with ui.row():
-                ui.label(f"🚨Allergies:  {user.food_allergies_detail}").classes('text-lg').tailwind.text_color("red-500")
+                ui.label(f"🚨Allergies:  {user.food_allergies_detail}").classes('text-lg text-red-500')
                 with ui.tooltip().classes("text-base"):
                     ui.html(User.model_fields["food_allergies_detail"].description).classes('text-sm')
         if user.has_food_intolerances:

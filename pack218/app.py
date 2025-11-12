@@ -197,7 +197,7 @@ def chrome(request: Request, session: Session):
             ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
             ui.label("Pack 218 Camping").classes('text-l font-bold')
             ui.space()
-            ui.label(f'Hello {user_full_name}!').tailwind.margin('mr-4')
+            ui.label(f'Hello {user_full_name}!').classes('mr-4')
             ui.button(on_click=logout, icon='logout', text='Logout').classes('flat color=white')
 
         with ui.footer(value=False) as footer:
