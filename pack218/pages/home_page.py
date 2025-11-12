@@ -69,6 +69,33 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 cell(family_name)
                 cell(family_costs[family_name])
 
+    # Admin-only: list of participant emails for easy copy/paste
+    if is_admin:
+        emails_set = set()
+        for r in registrations:
+            u = r.user(session=session)
+            if u.email:
+                emails_set.add(str(u.email))
+        emails = sorted(emails_set)
+        with ui.expansion(f'Emails of participants ({len(emails)})', icon='mail').classes('w-full bg-grey-2'):
+            ui.textarea(value=', '.join(emails)).props('readonly').classes('w-full')
+
+    # Admin-only: meal totals
+    if is_admin:
+        meal_rows = [
+            ("Saturday breakfast", sum(1 for r in registrations if r.eat_saturday_breakfast)),
+            ("Saturday lunch", sum(1 for r in registrations if r.eat_saturday_lunch)),
+            ("Saturday dinner", sum(1 for r in registrations if r.eat_saturday_dinner)),
+            ("Sunday breakfast", sum(1 for r in registrations if r.eat_sunday_breakfast)),
+        ]
+        with ui.expansion('Meal totals', icon='restaurant').classes('w-full bg-grey-2'):
+            with ui.grid(columns=2).classes('gap-0'):
+                header("Meal")
+                header("Total")
+                for meal_name, count in meal_rows:
+                    cell(meal_name)
+                    cell(count)
+                    
 def render_home_page(request: Request, session: SessionDep):
 
     current_user = User.get_current(request=request, session=session)
