@@ -199,10 +199,48 @@ def render_home_page(request: Request, session: SessionDep):
                     ui.label('No upcoming events found. Come back soon!').classes('text-lg font-bold text-red-500')
 
             with ui.tab_panel(two):
-                with ui.row():
-                    if past_events:
-                        for event in past_events:
-                            with ui.card():
-                                ui.label(f"{event.date} for 2 days, at {event.location}").classes('text-lg font-bold')
-                    else:
-                        ui.label('No past events found').classes('text-lg font-bold text-red-500')
+                if past_events:
+                    # Create a dropdown to select past events (sorted from most recent to oldest)
+                    sorted_past_events = sorted(past_events, key=lambda e: e.date, reverse=True)
+                    event_options = {event.id: f"{event.date} - {event.location}" for event in sorted_past_events}
+                    selected_event_id = ui.select(
+                        options=event_options,
+                        label='Select a past camping trip',
+                        value=None
+                    ).classes('w-full')
+
+                    # Container for the selected event details
+                    event_details_container = ui.column().classes('w-full')
+
+                    def show_event_details(event_id):
+                        event_details_container.clear()
+                        if event_id is None:
+                            return
+
+                        # Find the selected event
+                        selected_event = next((e for e in past_events if e.id == event_id), None)
+                        if not selected_event:
+                            return
+
+                        with event_details_container:
+                            with ui.card().classes('w-full'):
+                                ui.label(f"{selected_event.date} for 2 days, at {selected_event.location}").classes('text-lg font-bold')
+
+                                with ui.expansion('More details', icon='expand_more').classes('w-full bg-grey-2'):
+                                    ui.markdown(selected_event.details).classes('w-full h-[calc(100vh-2rem)]')
+
+                                render_participants_table(event=selected_event, request=request, session=session)
+
+                                # For each users in the family, check if they're registered and show cost
+                                is_registered = False
+                                for u in current_user.get_all_from_family():
+                                    event_registration = EventRegistration.get_by_user_and_event(user_id=u.id, event_id=selected_event.id, session=session)
+                                    if event_registration:
+                                        is_registered = True
+                                        break
+                                if is_registered:
+                                    ui.markdown(f"Your cost: **${selected_event.get_family_cost(session=session, family_id=current_user.family_id)}**")
+
+                    selected_event_id.on_value_change(lambda e: show_event_details(e.value))
+                else:
+                    ui.label('No past events found').classes('text-lg font-bold text-red-500')
