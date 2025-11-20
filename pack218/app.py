@@ -302,7 +302,7 @@ def admin_events_new(request: Request, session: SessionDep) -> None:
                 date=date_value,
                 location=location_value,
                 details=details_value,
-                duration_in_days=duration_days,
+                duration_in_days=int(duration_days),
             )
             event.save()
             ui.notify('Event created')
