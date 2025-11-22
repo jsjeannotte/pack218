@@ -194,7 +194,7 @@ def render_home_page(request: Request, session: SessionDep):
                                 ui.markdown(f"Your cost: **${event.get_family_cost(session=session, family_id=current_user.family_id)}**")
                                 ui.label("🎉 You are registered! Click below to update the details of your registration").classes('text-lg text-italic')
                             registration_page_url = f'/event-registration/{event.id}'
-                            ui.button('Update registration' if is_registered else f'Register').on_click(lambda: ui.navigate.to(registration_page_url)).classes(BUTTON_CLASSES_ACCEPT)
+                            ui.button('Update registration' if is_registered else f'Register').on_click(lambda url=registration_page_url: ui.navigate.to(url)).classes(BUTTON_CLASSES_ACCEPT)
                 else:
                     ui.label('No upcoming events found. Come back soon!').classes('text-lg font-bold text-red-500')
 

@@ -55,6 +55,8 @@ def render_page_event_registration(request: Request, session: Session, event_id:
             with ui.card_section():
                 ui.button('Close').on_click(dialog.close).classes(BUTTON_CLASSES_ACCEPT)
 
+        dialog.on('hide', lambda: ui.navigate.to('/'))
+        dialog.on('escape-key', lambda: ui.navigate.to('/'))
         dialog.open()
 
     with ui.card().classes('w-full').tight():
