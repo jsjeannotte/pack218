@@ -26,6 +26,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
             {'name': 'participant', 'label': 'Participant', 'field': 'participant', 'sortable': True},
             {'name': 'cost', 'label': 'Cost', 'field': 'cost', 'sortable': True, 'align': 'right'},
+            {'name': 'registration_ts', 'label': 'Registration Date', 'field': 'registration_ts', 'sortable': True},
         ]
         if is_admin:
             table_columns.extend([
@@ -41,6 +42,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 'family': family.family_name if family and family.family_name else "",
                 'participant': u.participant_str,
                 'cost': r.cost,
+                'registration_ts': r.registration_ts.strftime('%Y-%m-%d %H:%M') if r.registration_ts else "",
             }
             if is_admin:
                 row.update({

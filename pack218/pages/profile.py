@@ -85,7 +85,7 @@ def dialog_user_crud(request: Request, session: Session, crud_mode:CRUDMode, use
                 has_food_allergies = ui.checkbox('Has food allergies?').classes('w-full')
                 food_allergies_detail = ui.textarea('Allergies Detail 💬').classes('w-full').bind_visibility_from(has_food_allergies, "value")
                 with ui.tooltip().classes("text-base"):
-                    ui.html(User.model_fields["food_allergies_detail"].description).classes('text-sm')
+                    ui.html(User.model_fields["food_allergies_detail"].description, sanitize=False).classes('text-sm')
             with ui.row():
                 has_food_intolerances = ui.checkbox('Has food intolerances?').classes('w-full')
                 food_intolerances = ui.textarea('Food Intolerances Detail').classes('w-full').bind_visibility_from(has_food_intolerances, "value")
@@ -124,7 +124,7 @@ def user_card(request: Request, session: Session, user: User):
             with ui.row():
                 ui.label(f"🚨Allergies:  {user.food_allergies_detail}").classes('text-lg text-red-500')
                 with ui.tooltip().classes("text-base"):
-                    ui.html(User.model_fields["food_allergies_detail"].description).classes('text-sm')
+                    ui.html(User.model_fields["food_allergies_detail"].description, sanitize=False).classes('text-sm')
         if user.has_food_intolerances:
             with ui.row():
                 ui.label(f"🍽️ Intolerances: {user.food_intolerances}").classes('text-lg')
