@@ -63,7 +63,8 @@ def render_page_event_registration(request: Request, session: Session, event_id:
         card_title('Event Registration')
         with card():
             with ui.card_section():
-                ui.label(f"🏕️ Camping trip: {event.date} for 2 days, at {event.location}").classes('text-lg font-bold')
+                capacity_info = f" (capacity: {event.capacity})" if event.capacity else ""
+                ui.label(f"🏕️ Camping trip: {event.date} for {event.duration_in_days} days, at {event.location}{capacity_info}").classes('text-lg font-bold')
                 with ui.card_section():
                     ui.label('Please fill out the form below to register your family for this event')
                     with ui.row():

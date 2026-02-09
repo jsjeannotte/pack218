@@ -94,6 +94,7 @@ class Event(SQLModelWithSave, table=True, title="Event"):
     location: str = Field(default="", title="Location")
     details: str = Field(default="", title="Details", description="textarea:Details about the event")
     duration_in_days: int = Field(default=2, title="Duration", description="Duration of the event (in days)")
+    capacity: int | None = Field(default=None, title="Capacity", description="Max number of participants (null = unlimited)")
 
     # TODO: Fix the issue with relationship so we can improve performance
     #  and remove our custom implementation: get_participants

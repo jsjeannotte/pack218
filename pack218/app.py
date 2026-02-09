@@ -294,6 +294,7 @@ def admin_events_new(request: Request, session: SessionDep) -> None:
             date_input = ui.input('Date (YYYY-MM-DD)').props('type=date dense outlined').classes('w-full')
             location_input = ui.input('Location').props('dense outlined').classes('w-full')
             duration_input = ui.input('Duration in days', value='2').props('type=number dense outlined').classes('w-full')
+            capacity_input = ui.input('Capacity (leave empty for unlimited)').props('type=number dense outlined').classes('w-full')
         details_input = ui.textarea('Details (markdown supported)').props('outlined').classes('w-full h-40 mt-2')
 
         def create_event():
@@ -310,12 +311,16 @@ def admin_events_new(request: Request, session: SessionDep) -> None:
             except Exception:
                 duration_days = 2
 
+            capacity_value = capacity_input.value
+            capacity = int(capacity_value) if capacity_value else None
+
             event = Event(
                 event_type='Camping',
                 date=date_value,
                 location=location_value,
                 details=details_value,
                 duration_in_days=int(duration_days),
+                capacity=capacity,
             )
             event.save()
             ui.notify('Event created')

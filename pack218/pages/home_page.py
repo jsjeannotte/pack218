@@ -178,7 +178,8 @@ def render_home_page(request: Request, session: SessionDep):
                 if upcoming_events:
                     for event in upcoming_events:
                         with ui.card().classes('w-full'):
-                            ui.label(f"{event.date} for 2 days, at {event.location}").classes('text-lg font-bold')
+                            capacity_info = f" (capacity: {event.capacity})" if event.capacity else ""
+                            ui.label(f"{event.date} for {event.duration_in_days} days, at {event.location}{capacity_info}").classes('text-lg font-bold')
 
                             with ui.expansion('More details', icon='expand_more').classes('w-full bg-grey-2'):
                                 ui.markdown(event.details).classes('w-full h-[calc(100vh-2rem)]')
@@ -226,7 +227,8 @@ def render_home_page(request: Request, session: SessionDep):
 
                         with event_details_container:
                             with ui.card().classes('w-full'):
-                                ui.label(f"{selected_event.date} for 2 days, at {selected_event.location}").classes('text-lg font-bold')
+                                capacity_info = f" (capacity: {selected_event.capacity})" if selected_event.capacity else ""
+                                ui.label(f"{selected_event.date} for {selected_event.duration_in_days} days, at {selected_event.location}{capacity_info}").classes('text-lg font-bold')
 
                                 with ui.expansion('More details', icon='expand_more').classes('w-full bg-grey-2'):
                                     ui.markdown(selected_event.details).classes('w-full h-[calc(100vh-2rem)]')
