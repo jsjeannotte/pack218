@@ -4,18 +4,15 @@ Simple website for CubScout Pack 218
 ## Local setup
 
 ```shell
-./deps_create.sh
-./deps_sync.sh
-./run.sh
+./local_dev_setup.sh   # copies DB from prod, creates venv, syncs dependencies
+./local_dev_run.sh     # starts the dev server on 0.0.0.0:8001
 ```
 
 To just add dependencies and re-sync the venv:
 
 ```shell
-source .venv/bin/activate
-uv pip compile requirements.in -o requirements.txt
-uv pip compile tests/requirements.in -o tests/requirements.txt
-./deps_sync.sh
+./deps_lock.sh   # compiles requirements.in -> requirements.txt
+./deps_sync.sh   # syncs the venv with requirements.txt
 ```
 ### Environment variables (for development purposes)
 
