@@ -84,7 +84,7 @@ def is_date(value: str) -> str:
     return value
 
 
-Date = Annotated[str, BeforeValidator(lambda v: v + 1)]
+Date = Annotated[str, BeforeValidator(is_date)]
 
 
 class Event(SQLModelWithSave, table=True, title="Event"):

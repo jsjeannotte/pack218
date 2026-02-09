@@ -4,39 +4,29 @@ Simple website for CubScout Pack 218
 ## Local setup
 
 ```shell
-$ uv python install 3.11
-$ uv venv --python 3.11
-$ source .venv/bin/activate
-$ uv pip compile requirements.in -o requirements.txt
-$ uv pip install -r requirements.txt
-$ pycharm .
+./deps_create.sh
+./deps_sync.sh
+./run.sh
 ```
 
 To just add dependencies and re-sync the venv:
 
 ```shell
-$ source .venv/bin/activate
-$ uv pip compile requirements.in -o requirements.txt
-$ uv pip compile tests/requirements.in -o tests/requirements.txt
-$ uv pip sync tests/requirements.txt
+source .venv/bin/activate
+uv pip compile requirements.in -o requirements.txt
+uv pip compile tests/requirements.in -o tests/requirements.txt
+./deps_sync.sh
 ```
-### Environment variables (for development purposes and production)
+### Environment variables (for development purposes)
 
 ```shell
-export PACK218_STORAGE_SECRET="<your_secret_key_for_local_storage>"
-export POSTGRES_USER="pack218"
-export POSTGRES_PASSWORD="<your_password_here>"
+cat << EOF > .env
+PACK218_STORAGE_KEY="<...>"
+PACK218_APP_URL="http://0.0.0.0:8001"
+PACK218_USE_SQLITE=1
+GOOGLE_OAUTH_CLIENT_ID="<...>"
+GOOGLE_OAUTH_CLIENT_SECRET="<...>"
 ``` 
-
-### Starting dependencies (Postgres)
-
-```shell
-docker compose up -d pack218_db 
-```
-## Production
-
-```shell
-docker compose up -d
 
 # Service now listen on 0.0.0.0:8001 
 ```
