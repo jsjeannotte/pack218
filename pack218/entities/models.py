@@ -10,6 +10,7 @@ from pydantic import BeforeValidator, EmailStr, computed_field
 from pydantic_extra_types.phone_numbers import PhoneNumber
 from starlette.requests import Request
 from sqlalchemy import String
+from collections import defaultdict
 from sqlmodel import Field, Session, select, Relationship
 
 from pack218.entities import SQLModelWithSave, T
@@ -70,6 +71,50 @@ class EventRegistration(SQLModelWithSave, table=True, title="Event Registration"
             event_registration = EventRegistration(user_id=user_id, event_id=event_id)
             event_registration.save()
         return event_registration
+
+    @staticmethod
+    def compute_waitlist_status(session: Session, event_id: int) -> dict[int, bool]:
+        """Returns {registration_id: is_waitlisted} for all registrations of an event."""
+        event = Event.get_by_id(event_id, session=session)
+        registrations = EventRegistration.select_by_event(session=session, event_id=event_id)
+
+        if not event.capacity:
+            return {r.id: False for r in registrations}
+
+        # Group registrations into batches by (family_id, registration_ts).
+        # Members registered at the same time stay together, but later
+        # additions by the same family are treated as separate batches so
+        # they don't unfairly jump ahead of other registrations.
+        batches: dict[tuple[int, datetime], list[EventRegistration]] = defaultdict(list)
+        for r in registrations:
+            user = r.user(session=session)
+            batches[(user.family_id, r.registration_ts)].append(r)
+
+        # Sort batches by registration_ts
+        sorted_batches = sorted(batches.items(), key=lambda item: item[0][1])
+
+        result: dict[int, bool] = {}
+        headcount = 0
+        for _key, batch_regs in sorted_batches:
+            waitlisted = headcount >= event.capacity
+            for r in batch_regs:
+                result[r.id] = waitlisted
+            if not waitlisted:
+                headcount += len(batch_regs)
+
+        # Post-processing: ensure families are never split.
+        # If any batch of a family got in, all members of that family are in.
+        family_reg_ids: dict[int, list[int]] = defaultdict(list)
+        for r in registrations:
+            user = r.user(session=session)
+            family_reg_ids[user.family_id].append(r.id)
+
+        for _fid, reg_ids in family_reg_ids.items():
+            if any(not result[rid] for rid in reg_ids):
+                for rid in reg_ids:
+                    result[rid] = False
+
+        return result
 
 
 EventType = Literal["Camping", "Other"]

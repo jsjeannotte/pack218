@@ -9,6 +9,7 @@ from starlette.requests import Request
 def render_participants_table(event: Event, request: Request, session: SessionDep):
 
     registrations = event.get_registrations(session=session)
+    waitlist_status = EventRegistration.compute_waitlist_status(session=session, event_id=event.id)
 
     # participants = event.get_participants(session=session)
     with ui.expansion(f'Participants ({len(registrations)})', icon='expand_more').classes('w-full bg-grey-2'):
@@ -27,6 +28,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             {'name': 'participant', 'label': 'Participant', 'field': 'participant', 'sortable': True},
             {'name': 'cost', 'label': 'Cost', 'field': 'cost', 'sortable': True, 'align': 'right'},
             {'name': 'registration_ts', 'label': 'Registration Date', 'field': 'registration_ts', 'sortable': True},
+            {'name': 'waitlisted', 'label': 'Waitlisted', 'field': 'waitlisted', 'sortable': True},
         ]
         if is_admin:
             table_columns.extend([
@@ -43,6 +45,7 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 'participant': u.participant_str,
                 'cost': r.cost,
                 'registration_ts': r.registration_ts.strftime('%Y-%m-%d %H:%M') if r.registration_ts else "",
+                'waitlisted': "Yes" if waitlist_status.get(r.id, False) else "",
             }
             if is_admin:
                 row.update({
@@ -52,7 +55,14 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 })
             table_rows.append(row)
         table_export_buttons(table_columns, table_rows, filename=f"participants_event_{event.id}")
-        ui.table(columns=table_columns, rows=table_rows).props('flat dense separator="horizontal"').classes('w-full')
+        table = ui.table(columns=table_columns, rows=table_rows).props('flat dense separator="horizontal"').classes('w-full')
+        table.add_slot('body', r'''
+            <q-tr :props="props" :class="props.row.waitlisted === 'Yes' ? 'bg-red-1' : ''">
+                <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                    {{ col.value }}
+                </q-td>
+            </q-tr>
+        ''')
     
     if is_admin:
     # Per-family cost summary
