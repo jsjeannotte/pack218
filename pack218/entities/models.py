@@ -89,8 +89,8 @@ Date = Annotated[str, BeforeValidator(is_date)]
 
 class Event(SQLModelWithSave, table=True, title="Event"):
     id: int | None = Field(default=None, primary_key=True)
-    event_type: EventType | None = Field(default=None, sa_type=String, title="Event Type")
-    date: Date = Field(title="Date")
+    event_type: EventType = Field(default="Camping", sa_type=String, title="Event Type")
+    date: Date = Field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d'), title="Date")
     location: str = Field(default="", title="Location")
     details: str = Field(default="", title="Details", description="textarea:Details about the event")
     duration_in_days: int = Field(default=2, title="Duration", description="Duration of the event (in days)")
@@ -132,7 +132,7 @@ class Event(SQLModelWithSave, table=True, title="Event"):
 
     @staticmethod
     def get_upcoming(session: Session) -> List['Event']:
-        return [e for e in Event.get_all(session=session) if e.is_upcoming]
+        return sorted([e for e in Event.get_all(session=session) if e.is_upcoming], key=lambda e: e.date)
 
     @staticmethod
     def get_past(session: Session) -> List['Event']:

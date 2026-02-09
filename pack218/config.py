@@ -16,6 +16,9 @@ class Configs(BaseSettings):
     google_oauth_client_id: Optional[str] = None
     google_oauth_client_secret: Optional[str] = None
 
+    local_dev: bool = False
+    local_dev_user_id: int = 1
+
     run_in_editor: bool = False
 
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')

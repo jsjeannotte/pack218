@@ -28,7 +28,12 @@ Thumbs.db
 out/
 
 database.db
+database.db-shm
+database.db-wal
+
 .nicegui/**
 .env
 client_secret_*
 credentials.json
+
+copy_db_from_prod.sh

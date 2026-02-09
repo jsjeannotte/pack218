@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlmodel import SQLModel
 import logging
 
@@ -19,6 +19,14 @@ def get_sql_alchemy_database_url():
         return connection_str
 
 engine = create_engine(get_sql_alchemy_database_url())
+
+if config.pack218_use_sqlite:
+    @event.listens_for(engine, "connect")
+    def set_sqlite_wal_mode(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA wal_autocheckpoint=1000")
+        cursor.close()
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",

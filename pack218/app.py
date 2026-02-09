@@ -13,7 +13,7 @@ from starlette.config import Config
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -56,6 +56,12 @@ async def lifespan(app_: FastAPI):
     logger.info("Creating DB and Tables (if they don't exist)...")
     create_db_and_tables()
     yield
+    if config.pack218_use_sqlite:
+        from sqlalchemy import text
+        from pack218.persistence.engine import engine
+        logger.info("Checkpointing SQLite WAL...")
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
     logger.info("Shutting down...")
 
 fastapi_app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -67,94 +73,101 @@ fastapi_app.add_middleware(
     max_age=3600,
 )
 
-# Google OAuth
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+if not config.local_dev:
+    # Google OAuth
+    oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Replace these with your own values from the Google Developer Console
-GOOGLE_CLIENT_ID = config.google_oauth_client_id
-GOOGLE_CLIENT_SECRET = config.google_oauth_client_secret
-GOOGLE_REDIRECT_URI = f"{config.pack218_app_url}/auth"
+    # Replace these with your own values from the Google Developer Console
+    GOOGLE_CLIENT_ID = config.google_oauth_client_id
+    GOOGLE_CLIENT_SECRET = config.google_oauth_client_secret
+    GOOGLE_REDIRECT_URI = f"{config.pack218_app_url}/auth"
 
-oauth_config = Config()
-oauth = OAuth(oauth_config)
-oauth.register(
-    name='google',
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    redirect_uri=GOOGLE_REDIRECT_URI,
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    authorize_state=config.pack218_storage_key,
-    client_kwargs={'scope': 'openid email profile'}
-)
+    oauth_config = Config()
+    oauth = OAuth(oauth_config)
+    oauth.register(
+        name='google',
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        authorize_state=config.pack218_storage_key,
+        client_kwargs={'scope': 'openid email profile'}
+    )
 
 @app.get('/login')
 async def login(request: Request):
-    # Store the referrer URL if it exists in the header
+    if config.local_dev:
+        user = User.get_by_id(id=config.local_dev_user_id)
+        if user is None:
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"LOCAL_DEV_USER_ID={config.local_dev_user_id} not found in DB"}
+            )
+        request.session["user"] = {
+            "id": str(user.id),
+            "email": user.email,
+            "verified_email": True,
+            "name": f"{user.first_name} {user.last_name}",
+            "given_name": user.first_name,
+            "family_name": user.last_name,
+            "picture": "",
+        }
+        return RedirectResponse("/my-profile")
+    # Normal OAuth flow
     referrer = request.headers.get('referer')
     if referrer:
         request.session['referrer'] = referrer
     return await oauth.google.authorize_redirect(request, GOOGLE_REDIRECT_URI)
 
+if not config.local_dev:
+    @app.get("/auth")
+    async def auth(request: Request):
+        token = await oauth.google.authorize_access_token(request)
+        expires_in = token.get("expires_in")
 
-@app.get("/auth")
-async def auth(request: Request):
-    token = await oauth.google.authorize_access_token(request)
-    expires_in = token.get("expires_in")
+        user_info_response = await oauth.google.get('https://www.googleapis.com/oauth2/v2/userinfo', token=token)
+        user_info = user_info_response.json()
+        request.session["user"] = user_info
 
-    user_info_response = await oauth.google.get('https://www.googleapis.com/oauth2/v2/userinfo', token=token)
-    user_info = user_info_response.json()
-    request.session["user"] = user_info
-    
 
-    """
-    Example user info:
-    {
-    "id":"1***************",
-    "email":"user_email@gmail.com",
-    "verified_email":true,
-    "name":"<full name>",
-    "given_name":"<first_name>",
-    "family_name":"<last_name>",
-    "picture":"https://lh3.googleusercontent.com/a/<...>"
-    }
-    """
+        """
+        Example user info:
+        {
+        "id":"1***************",
+        "email":"user_email@gmail.com",
+        "verified_email":true,
+        "name":"<full name>",
+        "given_name":"<first_name>",
+        "family_name":"<last_name>",
+        "picture":"https://lh3.googleusercontent.com/a/<...>"
+        }
+        """
 
-    # TODO: Make sure the Google user has a verified email
-    if not user_info.get('verified_email', False):
-        # Return a 401 response
-        return JSONResponse(status_code=401, content={"error": "Google User email is not verified. Please address this and try again."})
+        # TODO: Make sure the Google user has a verified email
+        if not user_info.get('verified_email', False):
+            # Return a 401 response
+            return JSONResponse(status_code=401, content={"error": "Google User email is not verified. Please address this and try again."})
 
-    # Check if the user already exists
-    email = user_info.get('email')
-    user = User.get_by_email_or_none(email=email)
-    if user is None:
-        # Create the user
-        user = User(first_name=user_info.get('given_name'),
-                    last_name=user_info.get('family_name'),
-                    username=email,
-                    email=email,
-                    family_member_type='Parent',
-                    hashed_password="GOOGLE_AUTH",
-                    can_login=True,
-                    email_confirmation_code="N/A")
-        user.save()
+        # Check if the user already exists
+        email = user_info.get('email')
+        user = User.get_by_email_or_none(email=email)
+        if user is None:
+            # Create the user
+            user = User(first_name=user_info.get('given_name'),
+                        last_name=user_info.get('family_name'),
+                        username=email,
+                        email=email,
+                        family_member_type='Parent',
+                        hashed_password="GOOGLE_AUTH",
+                        can_login=True,
+                        email_confirmation_code="N/A")
+            user.save()
 
-    return RedirectResponse("/my-profile")
-    # # Redirect to stored referrer URL if it exists, otherwise return user info
-    # referrer = request.session.pop('referrer', None)
-    # if referrer and not referrer.endswith('/logout'):
-    #     # return RedirectResponse(referrer)
-    #     # Redurect to my-profile for now
-    #     # TODO: If this is the first login, redirect to /my-profile
-    #     return RedirectResponse("/my-profile")
-    # else:
-    #     # If we are coming from /logout, redirect to /
-    #     return RedirectResponse('/')
-    # return user_info
+        return RedirectResponse("/my-profile")
 
-@app.get("/token")
-async def get_token(token: str = Depends(oauth2_scheme)):
-    return jwt.decode(token, GOOGLE_CLIENT_SECRET, algorithms=["HS256"])
+    @app.get("/token")
+    async def get_token(token: str = Depends(oauth2_scheme)):
+        return jwt.decode(token, GOOGLE_CLIENT_SECRET, algorithms=["HS256"])
 
 
 @ui.page("/logout")
@@ -280,7 +293,7 @@ def admin_events_new(request: Request, session: SessionDep) -> None:
         with ui.grid(columns=3).classes('w-full gap-4 items-start'):
             date_input = ui.input('Date (YYYY-MM-DD)').props('type=date dense outlined').classes('w-full')
             location_input = ui.input('Location').props('dense outlined').classes('w-full')
-            duration_input = ui.input('Duration in days').props('type=number dense outlined').classes('w-full')
+            duration_input = ui.input('Duration in days', value='2').props('type=number dense outlined').classes('w-full')
         details_input = ui.textarea('Details (markdown supported)').props('outlined').classes('w-full h-40 mt-2')
 
         def create_event():
@@ -323,7 +336,7 @@ def admin_users(request: Request, session: SessionDep) -> None:
 
 ui.run_with(
     fastapi_app,
-    mount_path='/home',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
+    mount_path='/',  # NOTE this can be omitted if you want the paths passed to @ui.page to be at the root
     storage_secret=config.pack218_storage_key,
     # NOTE setting a secret is optional but allows for persistent storage per user
     favicon="🏕️",
