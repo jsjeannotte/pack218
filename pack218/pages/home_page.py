@@ -247,7 +247,7 @@ def render_camping_trip_detail(event: Event, request: Request, session: SessionD
             )
 
         if (event.details or '').strip():
-            ui.markdown(event.details).classes('w-full')
+            ui.markdown(event.details, sanitize=False).classes('w-full')
 
         render_participants_table(event=event, request=request, session=session)
 

@@ -37,3 +37,5 @@ client_secret_*
 credentials.json
 
 copy_db_from_prod.sh
+
+pack218/images/uploads/

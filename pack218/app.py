@@ -5,7 +5,7 @@ use the great `Authlib package <https://docs.authlib.org/en/v0.13/client/starlet
 Here we just demonstrate the NiceGUI integration.
 """
 from authlib.integrations.starlette_client import OAuth
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt
 from nicegui import ui
@@ -14,8 +14,11 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
+import json
 import logging
 import os
+import pathlib
+import uuid
 from contextlib import asynccontextmanager
 
 from jose import jwt
@@ -186,6 +189,41 @@ async def logout(request: Request):
 current_file_path = os.path.abspath(__file__)
 current_directory = os.path.dirname(current_file_path)
 nicegui.app.add_static_files('/images', f'{current_directory}/images')
+
+_UPLOADS_DIR = pathlib.Path(current_directory) / 'images' / 'uploads'
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+_ALLOWED_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+_ALLOWED_IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+@nicegui.app.post('/api/upload-image')
+async def upload_image(request: Request, file: UploadFile = File(...)) -> JSONResponse:
+    if not User.current_user_is_admin(request=request):
+        return JSONResponse(status_code=403, content={'error': 'admin required'})
+
+    content_type = (file.content_type or '').lower()
+    if content_type not in _ALLOWED_IMAGE_TYPES:
+        return JSONResponse(status_code=400, content={'error': 'unsupported content type'})
+
+    ext = pathlib.Path(file.filename or '').suffix.lower()
+    if ext not in _ALLOWED_IMAGE_EXTS:
+        ext = {
+            'image/png': '.png',
+            'image/jpeg': '.jpg',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+        }[content_type]
+
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MAX_UPLOAD_BYTES:
+        return JSONResponse(status_code=413, content={'error': 'file too large'})
+
+    name = f'{uuid.uuid4().hex}{ext}'
+    (_UPLOADS_DIR / name).write_bytes(data)
+    return JSONResponse(status_code=200, content={'url': f'/images/uploads/{name}'})
+
 
 def assert_logged_in(request: Request):
     user = request.session.get("user")
@@ -382,10 +420,90 @@ def _render_event_form(event: Event | None, request: Request, session: Session) 
                 'Capacity (leave empty for unlimited)',
                 value=(str(event.capacity) if is_edit and event.capacity is not None else ''),
             ).props('type=number dense outlined').classes('w-full')
-        details_input = ui.textarea(
-            'Details (markdown supported)',
-            value=(event.details if is_edit else ''),
-        ).props('outlined').classes('w-full h-40 mt-2')
+        ui.add_head_html(
+            '<link rel="stylesheet" '
+            'href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />'
+            '<script src="https://uicdn.toast.com/editor/latest/'
+            'toastui-editor-all.min.js"></script>'
+        )
+        initial_markdown = event.details if is_edit else ''
+
+        class _MarkdownHolder:
+            def __init__(self, value: str) -> None:
+                self.value = value
+
+        details_input = _MarkdownHolder(initial_markdown)
+        host_id = f'tui-editor-host-{id(details_input)}'
+        change_event = f'tui_md_change_{id(details_input)}'
+
+        def _on_md_change(e) -> None:
+            value = e.args
+            if isinstance(value, list) and value:
+                value = value[0]
+            details_input.value = value or ''
+
+        ui.on(change_event, _on_md_change)
+
+        ui.element('div').props(f'id={host_id}').classes('w-full mt-2')
+        ui.run_javascript(
+            f'''
+            (function() {{
+              const hostId = {json.dumps(host_id)};
+              const initialValue = {json.dumps(initial_markdown)};
+              const changeEvent = {json.dumps(change_event)};
+
+              function mountEditor() {{
+                const host = document.getElementById(hostId);
+                if (!host || !window.toastui || !window.toastui.Editor) {{
+                  return setTimeout(mountEditor, 50);
+                }}
+                if (host.dataset.tuiMounted === '1') return;
+                host.dataset.tuiMounted = '1';
+
+                const editor = new toastui.Editor({{
+                  el: host,
+                  height: '400px',
+                  initialEditType: 'wysiwyg',
+                  previewStyle: 'tab',
+                  initialValue: initialValue,
+                  usageStatistics: false,
+                  hooks: {{
+                    addImageBlobHook(blob, callback) {{
+                      const formData = new FormData();
+                      formData.append('file', blob, blob.name || 'pasted.png');
+                      fetch('/api/upload-image', {{
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin',
+                      }})
+                        .then(async (r) => {{
+                          const text = await r.text();
+                          if (!r.ok) {{
+                            console.error('upload failed', r.status, text);
+                            throw new Error('HTTP ' + r.status + ': ' + text);
+                          }}
+                          return JSON.parse(text);
+                        }})
+                        .then(data => callback(data.url, 'image'))
+                        .catch((err) => {{
+                          console.error(err);
+                          alert('Image upload failed: ' + (err && err.message ? err.message : err));
+                        }});
+                    }},
+                  }},
+                  events: {{
+                    change: () => {{
+                      emitEvent(changeEvent, editor.getMarkdown());
+                    }},
+                  }},
+                }});
+                host._tuiEditor = editor;
+              }}
+
+              mountEditor();
+            }})();
+            '''
+        )
 
         def submit():
             # Re-bind actor for this handler task — the GET-time ContextVar
