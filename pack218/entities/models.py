@@ -9,7 +9,7 @@ from typing_extensions import get_args
 from pydantic import BeforeValidator, EmailStr, computed_field
 from pydantic_extra_types.phone_numbers import PhoneNumber
 from starlette.requests import Request
-from sqlalchemy import String
+from sqlalchemy import String, Column, Index, JSON
 from collections import defaultdict
 from sqlmodel import Field, Session, select, Relationship
 
@@ -140,6 +140,7 @@ class Event(SQLModelWithSave, table=True, title="Event"):
     details: str = Field(default="", title="Details", description="textarea:Details about the event")
     duration_in_days: int = Field(default=2, title="Duration", description="Duration of the event (in days)")
     capacity: int | None = Field(default=None, title="Capacity", description="Max number of participants (null = unlimited)")
+    cancelled: bool = Field(default=False, title="Cancelled", description="Whether the trip has been cancelled")
 
     # TODO: Fix the issue with relationship so we can improve performance
     #  and remove our custom implementation: get_participants
@@ -178,11 +179,22 @@ class Event(SQLModelWithSave, table=True, title="Event"):
 
     @staticmethod
     def get_upcoming(session: Session) -> List['Event']:
-        return sorted([e for e in Event.get_all(session=session) if e.is_upcoming], key=lambda e: e.date)
+        return sorted(
+            [e for e in Event.get_all(session=session) if e.is_upcoming and not e.cancelled],
+            key=lambda e: e.date,
+        )
 
     @staticmethod
     def get_past(session: Session) -> List['Event']:
-        return [e for e in Event.get_all(session=session) if not e.is_upcoming]
+        return [e for e in Event.get_all(session=session) if not e.is_upcoming and not e.cancelled]
+
+    @staticmethod
+    def get_cancelled(session: Session) -> List['Event']:
+        return sorted(
+            [e for e in Event.get_all(session=session) if e.cancelled],
+            key=lambda e: e.date,
+            reverse=True,
+        )
 
 
 class Family(SQLModelWithSave, table=True):
@@ -412,9 +424,57 @@ class User(SQLModelWithSave, table=True):
             return False
         return current_user.is_admin
 
+    @staticmethod
+    def acting_is_admin(request: Request, session: Optional[Session] = None) -> bool:
+        """Admin status from a UI-gating perspective.
+
+        Returns False when an actual admin has toggled the "view as non-admin"
+        lens. Authorization checks (e.g. ``assert_is_admin``) must still use
+        ``current_user_is_admin`` so the lens cannot lock an admin out of the
+        toggle itself.
+
+        The lens flag lives in NiceGUI's ``app.storage.user`` (not Starlette's
+        ``request.session``) because the toggle is flipped from inside an
+        event handler that has no outbound HTTP response to write a session
+        cookie back on.
+        """
+        if not User.current_user_is_admin(request=request, session=session):
+            return False
+        try:
+            from nicegui import app as nicegui_app
+            return not bool(nicegui_app.storage.user.get('view_as_non_admin', False))
+        except Exception:
+            return True
+
     # @classmethod
     # def delete_by_id(cls: Type[T], id: int, session: Optional[Session] = None):
     #     # Ensure we're not trying to delete ourselves
     #     if id == User.get_current(request=request, session=session).id:
     #         raise ValueError("You cannot delete yourself. Ask another Admin to do it.")
     #     super().delete_by_id(id=id, session=session)
+
+
+# Audit action types
+ActionType = Literal["create", "update", "delete"]
+
+
+class ActionLog(SQLModelWithSave, table=True):
+    # Append-only audit log. One row per write through SQLModelWithSave.save() / delete_by_id().
+    # subject_user_id is null for Family-scoped writes (the panel surfaces those by joining
+    # entity_name='Family' AND entity_id with the viewer's family_id). reason is null for
+    # self-edits (actor == subject) and required when actor != subject (enforced in save()).
+    __tablename__ = "action_log"
+    __table_args__ = (
+        Index("ix_action_log_subject_created", "subject_user_id", "created_at"),
+        Index("ix_action_log_entity", "entity_name", "entity_id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    actor_user_id: int | None = Field(default=None, foreign_key="user.id", index=True)
+    subject_user_id: int | None = Field(default=None, foreign_key="user.id")
+    entity_name: str = Field(sa_type=String)
+    entity_id: int
+    action: ActionType = Field(sa_type=String)
+    field_changes: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    reason: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.now)

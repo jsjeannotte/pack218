@@ -8,6 +8,7 @@ import nicegui
 from sqlmodel import Session
 
 from pack218.entities.models import Family, Gender, User, FamilyMemberType
+from pack218.pages.on_behalf_panel import render_on_behalf_panel
 from pack218.pages.ui_components import grid, card_title, card, BUTTON_CLASSES_ACCEPT, simple_dialog, \
     BUTTON_CLASSES_CANCEL
 from pack218.pages.utils import SessionDep
@@ -220,6 +221,9 @@ def render_profile_page(request: Request, session: SessionDep):
     def apply_family_update() -> None:
         ui.notify(f'Family updated for username {nicegui.app.storage.user.get("username")}', color='positive')
         family.save(session=session)
+
+    # Surface anything an admin has done on behalf of this parent.
+    render_on_behalf_panel(session=session, current_user=current_user)
 
     with grid():
         with card():

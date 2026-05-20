@@ -1,5 +1,4 @@
  #!/bin/bash
- ./copy_db_from_prod.sh
  ./venv_create.sh
  ./deps_sync.sh
  echo "Local development setup complete"
