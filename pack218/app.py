@@ -68,8 +68,13 @@ async def lifespan(app_: FastAPI):
     logger.info("Shutting down...")
 
 fastapi_app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
-fastapi_app.add_middleware(SessionMiddleware, secret_key=config.pack218_storage_key)
-fastapi_app.add_middleware(
+# NOTE: Routes are registered on nicegui's `app` (e.g. @app.get('/login')) and
+# uvicorn launches `pack218.app:app` (= nicegui.app), so requests bypass
+# `fastapi_app` entirely. Middlewares must live on nicegui.app to be in scope
+# for the OAuth handlers and nicegui's RequestTrackingMiddleware, which
+# requires SessionMiddleware to be installed before it runs.
+app.add_middleware(SessionMiddleware, secret_key=config.pack218_storage_key)
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], #replace where needed
     allow_methods=["*"],
