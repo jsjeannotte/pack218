@@ -2,6 +2,7 @@ from typing import TypeVar, Optional, Type, Sequence
 
 from nicegui import ui
 from niceguicrud import NiceCRUD, NiceCRUDConfig
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, Session, select
 from pack218.persistence.engine import engine
@@ -17,14 +18,63 @@ class SQLModelWithSave(SQLModel):
         # Override this method to add custom logic like validation before saving
         pass
 
-    def save(self, session: Session = None):
+    def save(self, session: Optional[Session] = None) -> None:
+        # Local imports inside make_the_save avoid an import cycle:
+        # pack218.audit.hooks imports models which import this module.
         def make_the_save():
+            from pack218.audit import (
+                diff_for,
+                enforce_on_behalf_rules,
+                record_change,
+            )
+            from pack218.entities.models import ActionLog
+
+            is_action_log = isinstance(self, ActionLog)
+
+            # Audit log rows bypass enforcement and self-recording — without
+            # this the audit hook would recurse forever. ActionLog rows must
+            # be append-only: existing rows are rejected so the log cannot be
+            # rewritten through the same primitive that wrote it.
+            if is_action_log:
+                if sa_inspect(self).persistent or getattr(self, "id", None) is not None:
+                    raise RuntimeError(
+                        "ActionLog rows are append-only; "
+                        "cannot update an existing audit row"
+                    )
+                self.pre_save()
+                # audit: bypassed because ActionLog rows must not self-audit (recursion guard)
+                session.add(self)
+                session.commit()
+                session.refresh(self)
+                return
+
+            # Determine action BEFORE state changes.
+            state = sa_inspect(self)
+            is_create = state.transient or state.pending
+            action = "create" if is_create else "update"
+
+            # 1. Existing validation hook.
+            self.pre_save()
+
+            # 2. Capture diff BEFORE enforce. Some enforce paths read related
+            #    rows (e.g., the actor's User row) which could otherwise
+            #    trigger autoflush and clear the dirty-attribute history.
+            field_changes = diff_for(self, action)
+
+            # 3. Enforce on-behalf rules (raises AuditError on violation).
+            enforce_on_behalf_rules(session, self, action)
+
+            # 4. Write the row.
             session.add(self)
+            session.flush()  # populate id
+
+            # 5. Record the audit row in the same transaction. record_change
+            #    accepts the pre-flush diff so dirty-attribute history stays
+            #    intact and live + tested code paths converge.
+            record_change(session, self, action, field_changes=field_changes)
+
             session.commit()
             session.refresh(self)
-
-        # Validation
-        self.pre_save()
 
         if session is None:
             with Session(engine) as session:
@@ -63,9 +113,29 @@ class SQLModelWithSave(SQLModel):
 
 
     @classmethod
-    def delete_by_id(cls: Type[T], id: int, session: Optional[Session] = None):
-        def execute_query(s: Session) -> Optional[T]:
+    def delete_by_id(cls: Type[T], id: int, session: Optional[Session] = None) -> None:
+        def execute_query(s: Session) -> None:
+            from pack218.audit import (
+                diff_for,
+                enforce_on_behalf_rules,
+                record_change,
+            )
+            from pack218.entities.models import ActionLog
+
             instance = cls.get_by_id(id=id, session=s, raise_if_not_found=True)
+
+            # ActionLog rows are append-only — refuse to delete one through
+            # the universal primitive even though we could technically do so.
+            if isinstance(instance, ActionLog):
+                raise RuntimeError(
+                    "ActionLog rows are append-only; delete_by_id is not allowed"
+                )
+
+            enforce_on_behalf_rules(s, instance, "delete")
+            # Capture the snapshot before deletion clears the row.
+            field_changes = diff_for(instance, "delete")
+            record_change(s, instance, "delete", field_changes=field_changes)
+
             s.delete(instance)
             s.commit()
         if session is None:

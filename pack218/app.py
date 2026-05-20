@@ -27,11 +27,14 @@ from sqlmodel import Session
 from nicegui import ui, app
 import nicegui
 
+from pack218.audit import current_actor, set_actor_from_request
 from pack218.config import config
 from pack218.entities import NiceCRUDWithSQL
 from pack218.entities.models import Event, Family, User
+from pack218.pages.admin_event_registration import render_admin_event_registrations
+from pack218.pages.admin_overrides import OnBehalfNiceCRUD
 from pack218.pages.event_registration import render_page_event_registration
-from pack218.pages.home_page import render_home_page
+from pack218.pages.home_page import render_camping_trip_detail, render_home_page
 from pack218.pages.profile import render_profile_page
 from pack218.pages.ui_components import BUTTON_CLASSES_ACCEPT
 from pack218.pages.utils import SessionDep, assert_is_admin
@@ -196,20 +199,46 @@ def assert_logged_in(request: Request):
 # Pages
 
 def chrome(request: Request, session: Session):
-    
+
     redirect = assert_logged_in(request=request)
     if redirect is not None:
         return redirect
+
+    # Make the current user available to the audit hook for the duration of
+    # this request. Reads inside SQLModelWithSave.save() and .delete_by_id()
+    # pick this up via contextvars without needing any signature changes.
+    current_user = User.get_current(request=request, session=session)
+    if current_user is not None:
+        current_actor.set(current_user.id)
+    else:
+        current_actor.set(None)
+
     user_full_name = request.session.get('user', {}).get('name', 'N/A')
     
     def logout() -> None:
         ui.navigate.to('/logout')
 
+    is_real_admin = User.current_user_is_admin(request=request, session=session)
+    lens_active = is_real_admin and bool(app.storage.user.get('view_as_non_admin', False))
+    acting_admin = is_real_admin and not lens_active
+
+    def set_lens(value: bool) -> None:
+        app.storage.user['view_as_non_admin'] = bool(value)
+        ui.navigate.reload()
+
     def menu() -> None:
         with ui.header().classes(replace='row items-center') as header:
             ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=white')
             ui.label("Pack 218 Camping").classes('text-l font-bold')
+            if lens_active:
+                ui.badge('Viewing as non-admin', color='orange').classes('ml-2')
             ui.space()
+            if is_real_admin:
+                ui.switch(
+                    'View as non-admin',
+                    value=lens_active,
+                    on_change=lambda e: set_lens(e.value),
+                ).props('dense color=orange keep-color').classes('mr-4 text-white')
             ui.label(f'Hello {user_full_name}!').classes('mr-4')
             ui.button(on_click=logout, icon='logout', text='Logout').classes('flat color=white')
 
@@ -224,12 +253,11 @@ def chrome(request: Request, session: Session):
             ui.link('Manage my profile/family', profile_page)
             # ui.link('Update my password', update_password_page)
 
-            if User.current_user_is_admin(request=request, session=session):
+            if acting_admin:
                 ui.label('Admin')
-                ui.link('Events', admin_events)
-                ui.link('Create Event', admin_events_new)
                 ui.link('Users', admin_users)
                 ui.link('Families', admin_families)
+                ui.link('Action Log', admin_action_log_page)
 
             ui.label('Log Out')
             ui.button(on_click=logout, icon='logout').props('outline round')
@@ -256,12 +284,49 @@ def profile_page(request: Request, session: SessionDep) -> None:
         return redirect
     render_profile_page(request=request, session=session)
 
+@ui.page('/camping-trip/{event_id}')
+def camping_trip_page(request: Request, session: SessionDep, event_id: int) -> None:
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    event = Event.get_by_id(event_id, session=session)
+    if event is None:
+        ui.label('Camping trip not found.').classes('text-lg font-bold text-red-500')
+        ui.link('Back to camping trips', main_page)
+        return
+    render_camping_trip_detail(event=event, request=request, session=session)
+
 @ui.page('/event-registration/{event_id}')
 def event_registration_page(request: Request, session: SessionDep, event_id: int) -> None:
     redirect = chrome(request=request, session=session)
     if redirect is not None:
         return redirect
     render_page_event_registration(request=request, session=session, event_id=event_id)
+
+
+@ui.page('/event-registration/{event_id}/family/{family_id}')
+def event_registration_on_behalf_page(
+    request: Request, session: SessionDep, event_id: int, family_id: int
+) -> None:
+    # Only real admins may register on behalf of another family. The lens
+    # (view-as-non-admin) does not bypass this — actual privilege is required.
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    render_page_event_registration(
+        request=request, session=session, event_id=event_id, target_family_id=family_id,
+    )
+
+@ui.page('/admin/action-log')
+def admin_action_log_page(request: Request, session: SessionDep) -> None:
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    from pack218.pages.admin_action_log import render_admin_action_log
+    render_admin_action_log(session=session)
+
 
 @ui.page('/admin/families')
 def admin_families(request: Request, session: SessionDep) -> None:
@@ -270,7 +335,16 @@ def admin_families(request: Request, session: SessionDep) -> None:
     if redirect is not None:
         return redirect
     ui.label('This is the admin page to manage families.')
-    NiceCRUDWithSQL(basemodeltype=Family, basemodels=list(Family.get_all()), heading="Families")
+    OnBehalfNiceCRUD(basemodeltype=Family, basemodels=list(Family.get_all()), heading="Families")
+
+
+@ui.page('/admin/events/{event_id}/registrations')
+def admin_event_registrations_page(request: Request, session: SessionDep, event_id: int) -> None:
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    render_admin_event_registrations(session=session, event_id=event_id, request=request)
 
 @ui.page('/admin/events')
 def admin_events(request: Request, session: SessionDep) -> None:
@@ -279,25 +353,45 @@ def admin_events(request: Request, session: SessionDep) -> None:
     if redirect is not None:
         return redirect
     ui.label('This is the admin page for the events.')
+
     NiceCRUDWithSQL(basemodeltype=Event, basemodels=list(Event.get_all()), heading="Events")
 
-@ui.page('/admin/events/new')
-def admin_events_new(request: Request, session: SessionDep) -> None:
-    assert_is_admin(request=request, session=session)
-    redirect = chrome(request=request, session=session)
-    if redirect is not None:
-        return redirect
+def _render_event_form(event: Event | None, request: Request, session: Session) -> None:
+    """Shared form for creating a new event or editing an existing one."""
+    is_edit = event is not None
 
-    ui.label('Create a new Camping Event').classes('text-lg font-bold mb-2')
+    ui.label(
+        'Edit Camping Event' if is_edit else 'Create a new Camping Event'
+    ).classes('text-lg font-bold mb-2')
+
     with ui.card().classes('w-full p-4').tight():
         with ui.grid(columns=3).classes('w-full gap-4 items-start'):
-            date_input = ui.input('Date (YYYY-MM-DD)').props('type=date dense outlined').classes('w-full')
-            location_input = ui.input('Location').props('dense outlined').classes('w-full')
-            duration_input = ui.input('Duration in days', value='2').props('type=number dense outlined').classes('w-full')
-            capacity_input = ui.input('Capacity (leave empty for unlimited)').props('type=number dense outlined').classes('w-full')
-        details_input = ui.textarea('Details (markdown supported)').props('outlined').classes('w-full h-40 mt-2')
+            date_input = ui.input(
+                'Date (YYYY-MM-DD)',
+                value=(event.date if is_edit else ''),
+            ).props('type=date dense outlined').classes('w-full')
+            location_input = ui.input(
+                'Location',
+                value=(event.location if is_edit else ''),
+            ).props('dense outlined').classes('w-full')
+            duration_input = ui.input(
+                'Duration in days',
+                value=str(event.duration_in_days) if is_edit else '2',
+            ).props('type=number dense outlined').classes('w-full')
+            capacity_input = ui.input(
+                'Capacity (leave empty for unlimited)',
+                value=(str(event.capacity) if is_edit and event.capacity is not None else ''),
+            ).props('type=number dense outlined').classes('w-full')
+        details_input = ui.textarea(
+            'Details (markdown supported)',
+            value=(event.details if is_edit else ''),
+        ).props('outlined').classes('w-full h-40 mt-2')
 
-        def create_event():
+        def submit():
+            # Re-bind actor for this handler task — the GET-time ContextVar
+            # set by chrome() does not survive across NiceGUI's event loop.
+            set_actor_from_request(request=request, session=session)
+
             date_value = (date_input.value or '').strip()
             location_value = (location_input.value or '').strip()
             duration_value = duration_input.value or '2'
@@ -314,21 +408,58 @@ def admin_events_new(request: Request, session: SessionDep) -> None:
             capacity_value = capacity_input.value
             capacity = int(capacity_value) if capacity_value else None
 
-            event = Event(
-                event_type='Camping',
-                date=date_value,
-                location=location_value,
-                details=details_value,
-                duration_in_days=int(duration_days),
-                capacity=capacity,
-            )
-            event.save()
-            ui.notify('Event created')
-            ui.navigate.to('/admin/events')
+            if is_edit:
+                event.date = date_value
+                event.location = location_value
+                event.details = details_value
+                event.duration_in_days = int(duration_days)
+                event.capacity = capacity
+                event.save()
+                ui.notify('Event updated')
+                ui.navigate.to(f'/camping-trip/{event.id}')
+            else:
+                new_event = Event(
+                    event_type='Camping',
+                    date=date_value,
+                    location=location_value,
+                    details=details_value,
+                    duration_in_days=int(duration_days),
+                    capacity=capacity,
+                )
+                new_event.save()
+                ui.notify('Event created')
+                ui.navigate.to('/admin/events')
 
+        cancel_target = f'/camping-trip/{event.id}' if is_edit else '/admin/events'
         with ui.row().classes('w-full justify-end gap-2 mt-4'):
-            ui.button('Cancel', on_click=lambda: ui.navigate.to('/admin/events')).props('outline')
-            ui.button('Create Event', icon='add').on_click(create_event).classes(BUTTON_CLASSES_ACCEPT)
+            ui.button('Cancel', on_click=lambda url=cancel_target: ui.navigate.to(url)).props('outline')
+            ui.button(
+                'Save Changes' if is_edit else 'Create Event',
+                icon='save' if is_edit else 'add',
+            ).on_click(submit).classes(BUTTON_CLASSES_ACCEPT)
+
+
+@ui.page('/admin/events/new')
+def admin_events_new(request: Request, session: SessionDep) -> None:
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    _render_event_form(event=None, request=request, session=session)
+
+
+@ui.page('/admin/events/{event_id}/edit')
+def admin_events_edit(request: Request, session: SessionDep, event_id: int) -> None:
+    assert_is_admin(request=request, session=session)
+    redirect = chrome(request=request, session=session)
+    if redirect is not None:
+        return redirect
+    event = Event.get_by_id(event_id, session=session)
+    if event is None:
+        ui.label('Camping trip not found.').classes('text-lg font-bold text-red-500')
+        ui.link('Back to events', '/admin/events')
+        return
+    _render_event_form(event=event, request=request, session=session)
 
 @ui.page('/admin/users')
 def admin_users(request: Request, session: SessionDep) -> None:
@@ -337,7 +468,7 @@ def admin_users(request: Request, session: SessionDep) -> None:
     if redirect is not None:
         return redirect
     ui.label('This is the admin page to manage users.')
-    NiceCRUDWithSQL(basemodeltype=User, basemodels=list(User.get_all()), heading="Users")
+    OnBehalfNiceCRUD(basemodeltype=User, basemodels=list(User.get_all()), heading="Users")
 
 ui.run_with(
     fastapi_app,

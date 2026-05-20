@@ -4,6 +4,7 @@ Simple website for CubScout Pack 218
 ## Local setup
 
 ```shell
+./copy_db_from_prod.sh # Optional (and need to be provided by the user, no checked in)
 ./local_dev_setup.sh   # copies DB from prod, creates venv, syncs dependencies
 ./local_dev_run.sh     # starts the dev server on 0.0.0.0:8001
 ```
