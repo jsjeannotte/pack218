@@ -168,7 +168,10 @@ def render_profile_page(request: Request, session: SessionDep):
             if family_id.value == 0:
                 return ui.notify('Please select a family', color='negative')
             elif family_id.value == 'NEW_FAMILY':
-                new_family = Family(family_name=family_name_input.value)
+                family_name = family_name_input.value.strip()
+                if not family_name:
+                    return ui.notify('Please enter a family name', color='negative')
+                new_family = Family(family_name=family_name)
                 new_family.save(session=session)
                 current_user.family_id = new_family.id
                 current_user.save(session=session)
@@ -194,10 +197,14 @@ def render_profile_page(request: Request, session: SessionDep):
                                   validation=family_validation,
                                   value=0)
 
-                with ui.card_section().bind_visibility_from(family_id, "value", value="NEW_FAMILY"):
+                with ui.card_section().bind_visibility_from(
+                    family_id,
+                    "value",
+                    backward=lambda value: value == "NEW_FAMILY",
+                ):
                     with ui.row():
                         family_name_input = ui.input('Family Name',
-                                 validation={'Need to provide a valid family name': lambda value: len(value) > 0}
+                                 validation={'Need to provide a valid family name': lambda value: bool(value and value.strip())}
                                  )
             with ui.row():
                 ui.button('Close', on_click=dialog.close)
