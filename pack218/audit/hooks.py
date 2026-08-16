@@ -47,7 +47,7 @@ def subject_for(instance) -> Tuple[str, Optional[int], Optional[int]]:
     """
     # Import locally to avoid an import cycle (models.py imports from this
     # module once U3 wires the save hook).
-    from pack218.entities.models import User, EventRegistration, Family
+    from pack218.entities.models import User, EventRegistration, Family, FamilyEventPayment
 
     entity_name = type(instance).__name__
     entity_id = getattr(instance, "id", None)
@@ -57,6 +57,10 @@ def subject_for(instance) -> Tuple[str, Optional[int], Optional[int]]:
     if isinstance(instance, EventRegistration):
         return entity_name, entity_id, getattr(instance, "user_id", None)
     if isinstance(instance, Family):
+        return entity_name, entity_id, None
+    if isinstance(instance, FamilyEventPayment):
+        # Payment status belongs to a family, but remains a distinct entity in
+        # the admin audit log so paid/unpaid transitions are easy to filter.
         return entity_name, entity_id, None
     return entity_name, entity_id, None
 
@@ -362,13 +366,36 @@ def record_change(
     because it needs the diff BEFORE flush, while attribute history is still
     intact). When omitted, the diff is computed here.
     """
-    from pack218.entities.models import ActionLog
+    from pack218.entities.models import ActionLog, Family, FamilyEventPayment
 
     if isinstance(instance, ActionLog):
         return
 
     if field_changes is None:
         field_changes = diff_for(instance, action)
+
+    # A payment toggle usually changes only ``is_paid``. Embed its stable
+    # family/event context in every audit row so the entry remains meaningful
+    # even if the payment row is later deleted and no live join is possible.
+    if isinstance(instance, FamilyEventPayment):
+        field_changes = dict(field_changes)
+        if action == "delete":
+            snapshot = dict(field_changes.get("snapshot") or {})
+            family = session.get(Family, instance.family_id)
+            snapshot["family_name"] = family.family_name if family else None
+            field_changes["snapshot"] = snapshot
+        else:
+            family = session.get(Family, instance.family_id)
+            field_changes.setdefault(
+                "event_id", [instance.event_id, instance.event_id]
+            )
+            field_changes.setdefault(
+                "family_id", [instance.family_id, instance.family_id]
+            )
+            family_name = family.family_name if family else None
+            field_changes.setdefault(
+                "family_name", [family_name, family_name]
+            )
 
     entity_name, entity_id, subject_user_id = subject_for(instance)
 

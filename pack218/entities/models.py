@@ -9,7 +9,7 @@ from typing_extensions import get_args
 from pydantic import BeforeValidator, EmailStr, computed_field
 from pydantic_extra_types.phone_numbers import PhoneNumber
 from starlette.requests import Request
-from sqlalchemy import String, Column, Index, JSON
+from sqlalchemy import String, Column, Index, JSON, UniqueConstraint
 from collections import defaultdict
 from sqlmodel import Field, Session, select, Relationship
 
@@ -117,6 +117,43 @@ class EventRegistration(SQLModelWithSave, table=True, title="Event Registration"
         return result
 
 
+class FamilyEventPayment(SQLModelWithSave, table=True, title="Family Event Payment"):
+    """Admin-managed payment status for one family at one event.
+
+    The amount due is deliberately derived from registrations instead of
+    copied here, so edits to meals immediately flow through to event budgets.
+    """
+
+    __tablename__ = "family_event_payment"
+    __table_args__ = (
+        UniqueConstraint("event_id", "family_id", name="uq_family_event_payment"),
+        Index("ix_family_event_payment_event_id", "event_id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    event_id: int = Field(foreign_key="event.id", title="Event")
+    family_id: int = Field(foreign_key="family.id", title="Family")
+    is_paid: bool = Field(default=False, title="Payment complete")
+
+    @staticmethod
+    def select_by_event(session: Session, event_id: int) -> List['FamilyEventPayment']:
+        statement = select(FamilyEventPayment).where(
+            FamilyEventPayment.event_id == event_id
+        )
+        return list(session.exec(statement).all())
+
+    @staticmethod
+    def get_by_family_and_event(
+        session: Session, family_id: int, event_id: int
+    ) -> Optional['FamilyEventPayment']:
+        statement = (
+            select(FamilyEventPayment)
+            .where(FamilyEventPayment.family_id == family_id)
+            .where(FamilyEventPayment.event_id == event_id)
+        )
+        return session.exec(statement).one_or_none()
+
+
 EventType = Literal["Camping", "Other"]
 
 
@@ -165,6 +202,36 @@ class Event(SQLModelWithSave, table=True, title="Event"):
         for registration in registrations:
             total_cost += registration.cost
         return total_cost
+
+    def get_payment_summary(self, session: Session) -> dict:
+        """Return event budget totals based on registered families."""
+        registrations = self.get_registrations(session=session)
+        family_totals: dict[int, int] = defaultdict(int)
+        for registration in registrations:
+            user = registration.user(session=session)
+            if user and user.family_id:
+                family_totals[user.family_id] += registration.cost
+
+        paid_family_ids = {
+            payment.family_id
+            for payment in FamilyEventPayment.select_by_event(
+                session=session, event_id=self.id
+            )
+            if payment.is_paid
+        }
+        expected = sum(family_totals.values())
+        paid = sum(
+            amount for family_id, amount in family_totals.items()
+            if family_id in paid_family_ids
+        )
+        return {
+            "families": len(family_totals),
+            "families_paid": sum(fid in paid_family_ids for fid in family_totals),
+            "expected": expected,
+            "paid": paid,
+            "remaining": expected - paid,
+            "family_totals": family_totals,
+        }
 
     def get_registrations(self, session: Session) -> List['EventRegistration']:
         return EventRegistration.select_by_event(session=session, event_id=self.id)
