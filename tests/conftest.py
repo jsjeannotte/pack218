@@ -10,6 +10,7 @@ from pack218.entities.models import (  # noqa: F401
     Family,
     Event,
     EventRegistration,
+    FamilyEventPayment,
     ActionLog,
 )
 

@@ -15,7 +15,11 @@ from nicegui import ui
 from sqlalchemy import String, cast
 from sqlmodel import Session, or_, select
 
-from pack218.entities.models import ActionLog, EventRegistration, User
+from pack218.entities.models import (
+    ActionLog,
+    EventRegistration,
+    User,
+)
 from pack218.pages.ui_components import card_title
 
 # A reasonable upper bound on result rows so a misclicked "All" doesn't pull
@@ -23,7 +27,10 @@ from pack218.pages.ui_components import card_title
 _LIMIT_CHOICES = [50, 200, 1000, 10000]
 # ActionLog is excluded on purpose — the audit hook skips writes targeting
 # ActionLog itself (to avoid recursion), so there are no such rows to filter.
-_ENTITY_CHOICES = ["(any)", "User", "Event", "EventRegistration", "Family"]
+_ENTITY_CHOICES = [
+    "(any)", "User", "Event", "EventRegistration", "Family",
+    "FamilyEventPayment",
+]
 _ACTION_CHOICES = ["(any)", "create", "update", "delete"]
 
 
@@ -48,6 +55,18 @@ def _format_changes(field_changes: dict) -> str:
             # create / delete diffs are just `{field: value}`
             lines.append(f"{field}: {change!r}")
     return "\n".join(lines)
+
+
+def _changed_value(field_changes: dict, field: str):
+    """Return the newest usable value from an audit diff field."""
+    change = (field_changes or {}).get(field)
+    if change is None:
+        change = ((field_changes or {}).get('snapshot') or {}).get(field)
+    if isinstance(change, (list, tuple)) and len(change) == 2:
+        return change[1] if change[1] is not None else change[0]
+    if isinstance(change, dict):
+        return change.get('new') or change.get('old')
+    return change
 
 
 def render_admin_action_log(session: Session) -> None:
@@ -170,11 +189,24 @@ def render_admin_action_log(session: Session) -> None:
                 if event_id is not None:
                     entity_label = f"EventRegistration#{r.entity_id},event#{event_id}"
 
+            subject_label = (
+                _user_label(users_by_id.get(r.subject_user_id))
+                if r.subject_user_id else ''
+            )
+            if r.entity_name == 'FamilyEventPayment':
+                family_id = _changed_value(r.field_changes, 'family_id')
+                event_id = _changed_value(r.field_changes, 'event_id')
+                subject_label = _changed_value(
+                    r.field_changes, 'family_name'
+                ) or f"Family #{family_id}"
+                if event_id:
+                    entity_label = f"FamilyEventPayment#{r.entity_id},event#{event_id}"
+
             rows.append({
                 'id': r.id,
                 'created_at': r.created_at.strftime('%Y-%m-%d %H:%M:%S') if r.created_at else '',
                 'actor': _user_label(users_by_id.get(r.actor_user_id)) if r.actor_user_id else '(system)',
-                'subject': _user_label(users_by_id.get(r.subject_user_id)) if r.subject_user_id else '',
+                'subject': subject_label,
                 'entity': entity_label,
                 'action': r.action,
                 'reason': r.reason or '',

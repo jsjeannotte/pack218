@@ -17,7 +17,14 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-from pack218.entities.models import Event, Family, User, EventRegistration, ActionLog
+from pack218.entities.models import (
+    ActionLog,
+    Event,
+    EventRegistration,
+    Family,
+    FamilyEventPayment,
+    User,
+)
 
 target_metadata = SQLModel.metadata
 

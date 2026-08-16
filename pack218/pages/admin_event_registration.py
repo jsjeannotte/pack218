@@ -33,7 +33,6 @@ _REGISTRATION_FIELDS = [
     ("eat_saturday_lunch", "Saturday Lunch"),
     ("eat_saturday_dinner", "Saturday Dinner"),
     ("eat_sunday_breakfast", "Sunday Breakfast"),
-    ("has_paid", "Has Paid"),
 ]
 
 
@@ -208,11 +207,9 @@ def render_admin_event_registrations(session: Session, event_id: int, request: R
                             ).classes('font-bold')
                             summary = ", ".join(
                                 label for field, label in _REGISTRATION_FIELDS
-                                if getattr(r, field) and field != "has_paid"
+                                if getattr(r, field)
                             ) or "no meals or overnights selected"
                             ui.label(summary).classes('text-sm')
-                            paid_label = "✅ paid" if r.has_paid else "💰 unpaid"
-                            ui.label(paid_label).classes('text-sm')
 
                             ui.space()
 

@@ -3,7 +3,13 @@ import logging
 from nicegui import ui
 
 from pack218.audit import AuditError, current_reason, set_actor_from_request
-from pack218.entities.models import Event, EventRegistration, Family, User
+from pack218.entities.models import (
+    Event,
+    EventRegistration,
+    Family,
+    FamilyEventPayment,
+    User,
+)
 from pack218.pages.ui_components import (
     BUTTON_CLASSES_ACCEPT,
     BUTTON_CLASSES_CANCEL,
@@ -14,6 +20,68 @@ from pack218.pages.utils import SessionDep
 from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
+
+
+def _open_payment_dialog(
+    event: Event,
+    family: Family,
+    amount_due: int,
+    mark_paid: bool,
+    request: Request,
+    session: SessionDep,
+) -> None:
+    """Collect a reason and persist an audited family payment transition."""
+    action = "complete" if mark_paid else "unpaid"
+    with simple_dialog() as dialog, ui.card():
+        ui.label(f"Mark {family.family_name} payment {action}?").classes(
+            'text-lg font-bold'
+        )
+        ui.label(f"Amount due: ${amount_due}")
+        reason_input = ui.textarea(
+            "Reason (required)",
+            placeholder="e.g., Check received at the pack meeting",
+        ).classes('w-full').props('autofocus')
+
+        def confirm():
+            set_actor_from_request(request=request, session=session)
+            reason = (reason_input.value or "").strip()
+            if not reason:
+                ui.notify("Reason is required", color='negative')
+                return
+
+            payment = FamilyEventPayment.get_by_family_and_event(
+                session=session, family_id=family.id, event_id=event.id
+            )
+            if payment is None:
+                payment = FamilyEventPayment(
+                    family_id=family.id, event_id=event.id, is_paid=mark_paid
+                )
+            else:
+                payment.is_paid = mark_paid
+
+            token = current_reason.set(reason)
+            try:
+                payment.save(session=session)
+            except AuditError as e:
+                session.rollback()
+                ui.notify(str(e), color='negative')
+                return
+            except Exception as e:  # pragma: no cover - defensive
+                logger.exception(e)
+                session.rollback()
+                ui.notify(f"Error: {e}", color='negative')
+                return
+            finally:
+                current_reason.reset(token)
+
+            ui.notify("Payment status updated", color='positive')
+            dialog.close()
+            ui.navigate.to(f"/camping-trip/{event.id}")
+
+        with ui.row().classes('justify-end gap-2'):
+            ui.button("Cancel", on_click=dialog.close).classes(BUTTON_CLASSES_CANCEL)
+            ui.button("Save", on_click=confirm).classes(BUTTON_CLASSES_ACCEPT)
+    dialog.open()
 
 
 def render_participants_table(event: Event, request: Request, session: SessionDep):
@@ -101,9 +169,10 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
             family = Family.get_by_id(u.family_id, session=session)
             if not family:
                 continue
-            summary = families_summary.get(family.family_name)
+            summary = families_summary.get(family.id)
             if summary is None:
                 summary = {
+                    'family': family,
                     'total': 0,
                     'emails': set(),
                     'phones': set(),
@@ -113,27 +182,81 @@ def render_participants_table(event: Event, request: Request, session: SessionDe
                 summary['emails'].add(str(u.email))
             if u.phone_number:
                 summary['phones'].add(str(u.phone_number))
-            families_summary[family.family_name] = summary
+            families_summary[family.id] = summary
+
+        payments = {
+            payment.family_id: payment
+            for payment in FamilyEventPayment.select_by_event(
+                session=session, event_id=event.id
+            )
+        }
+        budget = event.get_payment_summary(session=session)
+
+        with ui.expansion('Event budget', icon='payments', value=True).classes(
+            'w-full bg-grey-2'
+        ):
+            with ui.row().classes('w-full gap-4 p-2'):
+                ui.label(
+                    f"Families paid: {budget['families_paid']} / {budget['families']}"
+                ).classes('font-bold')
+                ui.label(f"Expected: ${budget['expected']}").classes('font-bold')
+                ui.label(f"Paid: ${budget['paid']}").classes('font-bold text-green-700')
+                ui.label(f"Remaining: ${budget['remaining']}").classes(
+                    'font-bold text-orange-700'
+                )
 
         with ui.expansion(f'Costs by family ({len(families_summary)})', icon='expand_more').classes('w-full bg-grey-2'):
             cost_columns = [
                 {'name': 'family', 'label': 'Family', 'field': 'family', 'sortable': True},
                 {'name': 'total', 'label': 'Total', 'field': 'total', 'sortable': True, 'align': 'right'},
+                {'name': 'payment', 'label': 'Payment', 'field': 'payment', 'sortable': True},
                 {'name': 'emails', 'label': 'Emails', 'field': 'emails'},
                 {'name': 'phones', 'label': 'Phones', 'field': 'phones'},
+                {'name': 'actions', 'label': '', 'field': 'family_id'},
             ]
             cost_rows = []
-            for name in sorted(families_summary.keys()):
-                summary = families_summary[name]
+            for family_id, summary in sorted(
+                families_summary.items(), key=lambda item: item[1]['family'].family_name
+            ):
+                family = summary['family']
+                is_paid = bool(payments.get(family_id) and payments[family_id].is_paid)
                 row = {
-                    'family': name,
+                    'family': family.family_name,
                     'total': summary['total'],
+                    'payment': 'Paid' if is_paid else 'Unpaid',
                     'emails': ', '.join(sorted(summary['emails'])),
                     'phones': ', '.join(sorted(summary['phones'])),
+                    'family_id': family_id,
+                    'is_paid': is_paid,
                 }
                 cost_rows.append(row)
             table_export_buttons(cost_columns, cost_rows, filename=f"costs_by_family_event_{event.id}")
-            ui.table(columns=cost_columns, rows=cost_rows).props('flat dense separator="horizontal"').classes('w-full')
+            cost_table = ui.table(columns=cost_columns, rows=cost_rows).props(
+                'flat dense separator="horizontal"'
+            ).classes('w-full')
+            cost_table.add_slot('body-cell-actions', r'''
+                <q-td :props="props">
+                    <q-btn dense outline color="primary"
+                           :icon="props.row.is_paid ? 'undo' : 'check_circle'"
+                           :label="props.row.is_paid ? 'Mark unpaid' : 'Mark paid'"
+                           @click="() => $parent.$emit('payment_change', props.row)" />
+                </q-td>
+            ''')
+
+            def change_payment(e):
+                row = e.args
+                family = Family.get_by_id(row['family_id'], session=session)
+                if family:
+                    _open_payment_dialog(
+                        event=event,
+                        family=family,
+                        amount_due=row['total'],
+                        mark_paid=not row['is_paid'],
+                        request=request,
+                        session=session,
+                    )
+
+            cost_table.on('payment_change', change_payment)
 
         # Admin-only: meal totals
         meal_rows = [
